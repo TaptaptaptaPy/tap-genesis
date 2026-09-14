@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="theme-color" content="#07191c" />
+<link rel="manifest" href="/manifest.webmanifest" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Trirong:wght@400;600&family=Noto+Sans+Thai:wght@400;600&display=swap" rel="stylesheet" />
+<title>ปฐมเทพ</title>
+</head>
+<body>
+<div id="app">
+  <div id="hud">
+    <div class="stat faith"><b id="sFaith">0</b><span>ศรัทธา</span></div>
+    <div class="stat"><b id="sPop">0</b><span>ผู้ศรัทธา</span></div>
+    <div class="stat"><b id="sEra">เผ่าแรก</b></div>
+    <div class="grow"></div>
+    <button class="iconbtn" id="bSpeed">1×</button>
+    <button class="iconbtn" id="bGen">จีโนม</button>
+    <button class="iconbtn" id="bNew">โลกใหม่</button>
+  </div>
+  <div id="align"><div id="alignPin"></div></div>
+  <div id="stage">
+    <canvas id="cv"></canvas>
+    <div id="ticker"></div>
+    <div id="genome" class="hidden"></div>
+  </div>
+  <div id="pet">
+    <div id="petFace">?</div>
+    <div id="petInfo">
+      <div id="petAct">—</div>
+      <div id="petBars">
+        <div class="bar"><i id="barE"></i></div>
+        <div class="bar"><i id="barA"></i></div>
+      </div>
+    </div>
+    <button class="teach good" id="bPraise">✦</button>
+    <button class="teach bad" id="bScold">✕</button>
+  </div>
+  <div id="spells"></div>
+</div>
+<script type="module" src="/src/main.ts"></script>
+</body>
+</html>

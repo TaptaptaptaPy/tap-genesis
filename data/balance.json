@@ -1,0 +1,110 @@
+{
+  "_comment": "ตัวเลขสมดุลทั้งหมดอยู่ที่นี่ที่เดียว แก้ไฟล์นี้ไม่ต้องแตะโค้ด",
+  "world": {
+    "W": 22,
+    "H": 16,
+    "minLandRatio": 0.3,
+    "maxLandRatio": 0.62
+  },
+  "time": {
+    "tickSeconds": 0.45,
+    "ticksPerYear": 4
+  },
+  "village": {
+    "popCapByEra": [
+      30,
+      46,
+      66,
+      92,
+      130
+    ],
+    "workRadiusByEra": [
+      1,
+      1,
+      2,
+      2,
+      3
+    ],
+    "yieldMultByEra": [
+      1,
+      1.25,
+      1.55,
+      1.9,
+      2.4
+    ],
+    "harvestRate": 0.05,
+    "depletionFactor": 0.9,
+    "intensityDivisor": 22,
+    "needPerPop": 0.004,
+    "growthGain": 4.5,
+    "famineGain": 2.0,
+    "beliefBase": 0.34,
+    "beliefDrift": 0.012,
+    "faithPerBeliever": 0.028,
+    "knowPerPop": 0.006,
+    "splitAtCapRatio": 0.72,
+    "splitMinAge": 30,
+    "splitChance": 0.05
+  },
+  "land": {
+    "regen": 0.022,
+    "wetDecay": 0.012,
+    "wetCapBonus": 0.75,
+    "burnDecay": 0.02
+  },
+  "era": {
+    "knowThresholds": [
+      0,
+      50,
+      220,
+      700,
+      1800
+    ],
+    "names": [
+      "เผ่าแรก",
+      "ยุคสำริด",
+      "ยุคเหล็ก",
+      "ยุครุ่งเรือง",
+      "ยุคจักรกล"
+    ],
+    "faithCapBase": 500,
+    "faithCapPerEra": 250
+  },
+  "creature": {
+    "mutation": 0.075,
+    "inheritToBest": 0.35,
+    "learnBase": 0.14,
+    "learnPerIntel": 0.3,
+    "feedbackWindowSeconds": 6,
+    "baseLifeTicks": 190,
+    "lifePerSize": 130,
+    "lifePerMeta": 70,
+    "drainBase": 0.0085,
+    "harshPenalty": 1.5,
+    "waterPenalty": 1.8,
+    "eatFraction": 0.55,
+    "eatBase": 0.14,
+    "eatPerSize": 0.12,
+    "eatDepletion": 0.7,
+    "energyPerFood": 2.6,
+    "energyPerFoodSizePenalty": 0.8,
+    "raidBase": 0.6,
+    "raidPerAggr": 2.5,
+    "raidPerPop": 0.04,
+    "raidFloorPop": 3,
+    "farmAvoidRadius": 2.2,
+    "farmAvoidFactor": 0.45
+  },
+  "start": {
+    "faith": 30,
+    "villagePop": 8,
+    "deadFaithFloor": 45
+  },
+  "align": {
+    "_comment": "แกนธรรมต้องสะท้อน 'ทางเลือกของผู้เล่น' ไม่ใช่พฤติกรรมสัตว์ล้วนๆ จึงต้องมีแรงดึงกลับสู่กลาง",
+    "decayPerTick": 0.9985,
+    "creatureRaid": -0.015,
+    "creatureHelp": 0.012,
+    "creatureWorship": 0.005
+  }
+}

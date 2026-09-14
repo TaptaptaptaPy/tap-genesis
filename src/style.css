@@ -1,0 +1,60 @@
+:root{
+  --ink:#07191c; --ink2:#0d2a2f; --parch:#efe3c8; --parch-dim:#b6ad97;
+  --gold:#d9a437; --jade:#4f8f5a; --lac:#9a3030; --line:rgba(239,227,200,.16);
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;margin:0;background:var(--ink);color:var(--parch);
+  font-family:"Noto Sans Thai",system-ui,-apple-system,sans-serif;
+  overscroll-behavior:none;user-select:none}
+#app{display:flex;flex-direction:column;height:100dvh;
+  padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}
+#hud{display:flex;align-items:center;gap:14px;padding:8px 12px 6px;flex:0 0 auto}
+.stat{display:flex;align-items:baseline;gap:5px;line-height:1}
+.stat b{font-family:Trirong,Georgia,serif;font-weight:600;font-size:19px}
+.stat span{font-size:11px;color:var(--parch-dim)}
+.stat.faith b{color:var(--gold)}
+#hud .grow{flex:1}
+.iconbtn{background:none;border:1px solid var(--line);color:var(--parch);border-radius:999px;
+  height:30px;min-width:30px;padding:0 9px;font-size:12px;font-family:inherit;cursor:pointer}
+.iconbtn:active{background:rgba(239,227,200,.1)}
+#align{flex:0 0 auto;height:3px;margin:2px 12px 6px;border-radius:2px;position:relative;
+  background:linear-gradient(90deg,var(--lac),#3b3a35 50%,var(--jade))}
+#alignPin{position:absolute;top:-3px;width:3px;height:9px;border-radius:2px;background:var(--parch);
+  transform:translateX(-50%);left:50%;transition:left .5s ease}
+#stage{flex:1 1 auto;min-height:0;position:relative}
+canvas{display:block;width:100%;height:100%;touch-action:none}
+#ticker{position:absolute;left:0;right:0;bottom:0;padding:6px 12px;font-size:12px;
+  background:linear-gradient(transparent,rgba(7,25,28,.85));pointer-events:none;
+  min-height:26px;text-shadow:0 1px 3px #000}
+#pet{flex:0 0 auto;display:flex;align-items:center;gap:8px;padding:8px 12px;border-top:1px solid var(--line)}
+#petFace{width:38px;height:38px;flex:0 0 auto;border-radius:12px;background:#12343a;
+  display:grid;place-items:center;font-family:Trirong,serif;font-size:15px;color:var(--gold)}
+#petInfo{flex:1;min-width:0}
+#petAct{font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#petBars{display:flex;gap:4px;margin-top:4px}
+.bar{height:4px;border-radius:2px;background:rgba(239,227,200,.14);flex:1;overflow:hidden}
+.bar i{display:block;height:100%;width:50%}
+#barE{background:var(--gold)} #barA{background:#6aa0b5}
+.teach{border:1px solid var(--line);background:none;color:var(--parch);font-family:Trirong,serif;
+  font-size:15px;border-radius:10px;height:40px;width:46px;flex:0 0 auto;cursor:pointer}
+.teach.good:active{background:rgba(79,143,90,.35);border-color:var(--jade)}
+.teach.bad:active{background:rgba(154,48,48,.35);border-color:var(--lac)}
+#spells{flex:0 0 auto;display:flex;gap:7px;padding:8px 12px 12px;overflow-x:auto;
+  border-top:1px solid var(--line);scrollbar-width:none}
+#spells::-webkit-scrollbar{display:none}
+.sigil{flex:0 0 auto;width:62px;border:1px solid var(--line);border-radius:14px;background:none;
+  color:var(--parch);padding:7px 2px 5px;font-family:inherit;display:grid;justify-items:center;gap:3px;cursor:pointer}
+.sigil svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.6;
+  stroke-linecap:round;stroke-linejoin:round}
+.sigil .nm{font-size:10.5px;line-height:1.1}
+.sigil .cst{font-size:10px;color:var(--gold);font-family:Trirong,serif}
+.sigil[data-on="1"]{background:rgba(217,164,55,.16);border-color:var(--gold);color:#fff2d2}
+.sigil:disabled{opacity:.32}
+.sigil.dark .cst{color:#d98a8a}
+#genome{position:absolute;left:12px;right:12px;bottom:8px;z-index:4;background:rgba(9,30,34,.95);
+  border:1px solid var(--line);border-radius:14px;padding:12px 14px;font-size:12px}
+#genome h3{font-family:Trirong,serif;font-weight:600;font-size:15px;margin:0 0 8px}
+.grow-row{display:grid;grid-template-columns:80px 1fr 34px;align-items:center;gap:8px;margin:5px 0}
+.grow-row em{font-style:normal;color:var(--parch-dim);font-size:11px;text-align:right;font-family:Trirong,serif}
+.hidden{display:none!important}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}

@@ -1,0 +1,9 @@
+{
+  "name": "ปฐมเทพ",
+  "short_name": "ปฐมเทพ",
+  "start_url": "/",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "background_color": "#07191c",
+  "theme_color": "#07191c"
+}
