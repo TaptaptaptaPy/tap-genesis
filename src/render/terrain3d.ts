@@ -4,6 +4,9 @@ import { tileAt } from "../sim/world";
 import type { BiomeId, GameState, Tile } from "../sim/types";
 import { HEIGHT_SCALE, SEA, worldY } from "./world3d";
 import balance from "../../data/balance.json";
+import models from "../../data/models.json";
+import { bakedGeometry } from "./gltf";
+import { villageFootprint } from "./layout";
 
 const { W, H } = balance.world;
 
@@ -55,6 +58,11 @@ export class Terrain3D {
   private tickStamp = -999;
   private trees?: THREE.InstancedMesh;
   private rocks?: THREE.InstancedMesh;
+  /** รูปทรงของต้นไม้กับก้อนหิน มาถึงทีหลังเพราะโหลดจากไฟล์
+   *  ระหว่างรอ ใช้กรวยกับทรงสิบสองหน้าไปก่อน เกาะจะได้ไม่โล่งตอนเปิดเกม */
+  private propGeo: { tree?: THREE.BufferGeometry; rock?: THREE.BufferGeometry } = {};
+  private lastState: GameState | null = null;
+  readonly propsReady: Promise<void>;
   private water: THREE.Mesh;
 
   constructor(s: GameState) {
@@ -96,6 +104,14 @@ export class Terrain3D {
     this.water.receiveShadow = false;
     this.group.add(this.water);
 
+    this.propsReady = Promise.all([
+      bakedGeometry(models.props.tree, models.props.tint).then((g) => { this.propGeo.tree = g; }),
+      bakedGeometry(models.props.rock, models.props.tint).then((g) => { this.propGeo.rock = g; }),
+    ]).then(() => {
+      // รูปทรงมาถึงแล้ว ต้องปลูกใหม่ทั้งเกาะ ไม่งั้นจะยังเป็นกรวยอยู่จนกว่าชีวนิเวศจะเปลี่ยน
+      if (this.lastState) this.buildProps(this.lastState);
+    });
+
     this.refresh(s, true);
   }
 
@@ -134,6 +150,7 @@ export class Terrain3D {
   }
 
   private refresh(s: GameState, rebuildProps: boolean) {
+    this.lastState = s;
     const vw = W + 1;
     for (let y = 0; y <= H; y++) for (let x = 0; x <= W; x++) {
       const c = this.cornerColor(s, x, y);
@@ -149,11 +166,21 @@ export class Terrain3D {
   private buildProps(s: GameState) {
     for (const m of [this.trees, this.rocks]) if (m) { this.group.remove(m); m.dispose(); }
 
-    const treeTiles = s.tiles.filter((t) => t.biome === "FOREST" || (t.biome === "LUSH" && (t.x * 7 + t.y * 13) % 5 === 0));
+    // ห้ามปลูกต้นไม้ทับหมู่บ้าน — ต้นสนเต็มทรงบังกระท่อมจนมองไม่เห็นทั้งหมู่บ้าน
+    // (ตอนเป็นกรวยผอมๆ ยังพอเห็นลอดได้ เลยไม่มีใครสังเกต จนเปลี่ยนมาใช้โมเดลจริง)
+    const clearOf = (t: Tile) => !s.villages.some((v) => {
+      const r = villageFootprint(v) + 0.6;
+      return Math.hypot(v.x + 0.5 - (t.x + 0.5), v.y + 0.5 - (t.y + 0.5)) < r;
+    });
+    const treeTiles = s.tiles.filter((t) =>
+      (t.biome === "FOREST" || (t.biome === "LUSH" && (t.x * 7 + t.y * 13) % 5 === 0)) && clearOf(t));
     const perTile = 3;
-    const tgeo = new THREE.ConeGeometry(0.22, 0.75, 6);
-    tgeo.translate(0, 0.38, 0);
-    const tmat = new THREE.MeshLambertMaterial({ color: 0x2c5c34 });
+    // รูปทรงจากไฟล์มีสีอยู่ในจุดยอดแล้ว ตัวสำรองเป็นกรวยสีเดียวแบบเดิม
+    const tgeo = this.propGeo.tree ?? (() => {
+      const g = new THREE.ConeGeometry(0.22, 0.75, 6); g.translate(0, 0.38, 0); return g;
+    })();
+    const tmat = new THREE.MeshLambertMaterial(
+      this.propGeo.tree ? { vertexColors: true } : { color: 0x2c5c34 });
     const trees = new THREE.InstancedMesh(tgeo, tmat, Math.max(1, treeTiles.length * perTile));
     trees.castShadow = true;
     const m = new THREE.Matrix4(), q = new THREE.Quaternion(), sc = new THREE.Vector3();
@@ -177,9 +204,10 @@ export class Terrain3D {
     this.group.add(trees);
 
     const rockTiles = s.tiles.filter((t) => (t.biome === "MOUNT" || t.biome === "SNOW" || t.biome === "HILL")
-      && (t.x * 5 + t.y * 3) % 3 === 0);
-    const rgeo = new THREE.DodecahedronGeometry(0.26, 0);
-    const rmat = new THREE.MeshLambertMaterial({ color: 0x6b6a66, flatShading: true });
+      && (t.x * 5 + t.y * 3) % 3 === 0 && clearOf(t));
+    const rgeo = this.propGeo.rock ?? new THREE.DodecahedronGeometry(0.26, 0);
+    const rmat = new THREE.MeshLambertMaterial(
+      this.propGeo.rock ? { vertexColors: true } : { color: 0x6b6a66, flatShading: true });
     const rocks = new THREE.InstancedMesh(rgeo, rmat, Math.max(1, rockTiles.length));
     rocks.castShadow = true;
     let rn = 0;
@@ -189,7 +217,8 @@ export class Terrain3D {
       const scale = 0.7 + frac(t.x + t.y * 4.2) * 0.9;
       sc.set(scale, scale * 0.8, scale);
       q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), hx * 6.28);
-      m.compose(new THREE.Vector3(px, worldY(sampleH(s, px, pz)) + 0.1, pz), q, sc);
+      const lift = this.propGeo.rock ? 0 : 0.1;
+      m.compose(new THREE.Vector3(px, worldY(sampleH(s, px, pz)) + lift, pz), q, sc);
       rocks.setMatrixAt(rn++, m);
     }
     rocks.count = rn;

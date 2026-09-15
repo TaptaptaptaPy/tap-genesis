@@ -11,7 +11,8 @@ async function ready(page: import("@playwright/test").Page) {
     return !!g && g.game.state.villages.length > 0;
   });
   // โมเดลสัตว์โหลดแบบ async ถ้าไม่รอ ภาพจะจับตอนที่ยังไม่มีสัตว์บนเกาะ
-  await page.waitForFunction(() => (window as any).__genesis?.creatureReady === true);
+  await page.waitForFunction(() => (window as any).__genesis?.creatureReady === true
+    && (window as any).__genesis?.propsReady === true);
   await page.waitForTimeout(400);
 }
 
@@ -68,4 +69,23 @@ test("สัตว์ระยะใกล้ — ต้องเป็นตั
   });
   await page.waitForTimeout(900);
   await expect(page).toHaveScreenshot("creature-close.png", { maxDiffPixelRatio: 0.004 });
+});
+
+test("หมู่บ้านระยะใกล้ — กระท่อมต้องเป็นทรงที่ดูออกว่าเป็นที่อยู่", async ({ page }) => {
+  // เหตุผลเดียวกับภาพสัตว์: ของเล็กต้องมีภาพของตัวเอง ไม่งั้นเปลี่ยนไปก็ไม่มีใครรู้
+  await page.goto(world(20260915, 0.3));
+  await ready(page);
+  await page.evaluate(() => {
+    const g = (window as any).__genesis, w = g.world;
+    const v = g.game.state.villages[0];
+    const e = g.villages.group.children[0];
+    w.center.set(e.position.x, e.position.y + 0.5, e.position.z);
+    w.targetCenter?.set?.(e.position.x, e.position.y + 0.5, e.position.z);
+    w.distance = w.targetDistance = 4.2;
+    w.elevation = 0.5;
+    w.azimuth = Math.PI * 0.25;
+    void v;
+  });
+  await page.waitForTimeout(900);
+  await expect(page).toHaveScreenshot("village-close.png", { maxDiffPixelRatio: 0.004 });
 });

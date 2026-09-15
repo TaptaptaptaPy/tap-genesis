@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 
 /** โหลดโมเดลที่มีโครงกระดูกและท่าทางมาแล้ว
  *
@@ -101,4 +102,52 @@ export function flattenToLambert(scene: THREE.Object3D): void {
     });
     m.material = Array.isArray(m.material) ? out : out[0];
   });
+}
+
+/** รวมโมเดลทั้งไฟล์ให้เหลือรูปทรงเดียวที่เก็บสีไว้ในจุดยอด
+ *
+ *  ต้นไม้ของ Kenney หนึ่งต้นมีสองชิ้น (ลำต้นกับใบ) คนละวัสดุ
+ *  ถ้าวาดตรงๆ จะได้สองครั้งต่อหนึ่งต้น พอมีเป็นพันต้นก็จบเห่
+ *  ทางแก้คือย้ายสีของวัสดุไปเป็นสีของจุดยอด แล้วเชื่อมทุกชิ้นเป็นก้อนเดียว
+ *  จากนั้นทั้งป่าจะวาดครั้งเดียวด้วย InstancedMesh เหมือนกรวยที่ใช้อยู่เดิม
+ *
+ *  ผลข้างเคียงที่ตั้งใจ: สีติดมากับรูปทรง ไม่ต้องมานั่งกำหนดสีเองในโค้ดอีก
+ */
+export async function bakedGeometry(
+  url: string,
+  tint: Record<string, string> = {},
+): Promise<THREE.BufferGeometry> {
+  const gltf = await new GLTFLoader().loadAsync(url);
+  const parts: THREE.BufferGeometry[] = [];
+  gltf.scene.updateMatrixWorld(true);
+  gltf.scene.traverse((o) => {
+    const m = o as THREE.Mesh;
+    if (!m.isMesh) return;
+    const g = m.geometry.clone().applyMatrix4(m.matrixWorld);
+    g.deleteAttribute("uv");
+    g.deleteAttribute("uv1");
+    const mat = (Array.isArray(m.material) ? m.material[0] : m.material) as THREE.MeshStandardMaterial;
+    // สีที่มากับไฟล์ไม่ได้เข้ากับจานสีของเกาะเสมอไป ทับตามชื่อวัสดุได้
+    // (ชุด Nature Kit ให้ใบไม้เป็นฟ้าอมเขียวและเปลือกไม้เป็นส้มอ่อน)
+    const over = tint[mat?.name ?? ""];
+    const col = over ? new THREE.Color(over) : (mat?.color ?? new THREE.Color(0xffffff));
+    const n = g.attributes.position.count;
+    const arr = new Float32Array(n * 3);
+    for (let i = 0; i < n; i++) { arr[i * 3] = col.r; arr[i * 3 + 1] = col.g; arr[i * 3 + 2] = col.b; }
+    g.setAttribute("color", new THREE.BufferAttribute(arr, 3));
+    parts.push(g);
+  });
+  if (parts.length === 0) throw new Error("ไม่มี mesh ใน " + url);
+  const merged = mergeGeometries(parts, false);
+  if (!merged) throw new Error("เชื่อมรูปทรงไม่สำเร็จ: " + url);
+
+  // ย่อให้สูง 1 หน่วยและฐานอยู่ที่ y = 0 เหมือน normalise() ของโมเดลมีกระดูก
+  merged.computeBoundingBox();
+  const b = merged.boundingBox!;
+  const k = 1 / Math.max(b.max.x - b.min.x, b.max.y - b.min.y, b.max.z - b.min.z, 1e-6);
+  merged.scale(k, k, k);
+  merged.computeBoundingBox();
+  merged.translate(0, -merged.boundingBox!.min.y, 0);
+  merged.computeVertexNormals();
+  return merged;
 }

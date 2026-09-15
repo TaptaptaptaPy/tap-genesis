@@ -4,7 +4,9 @@ import { influenceOf } from "../sim/village";
 import balance from "../../data/balance.json";
 import type { Creature, GameState, NeedId, Village } from "../sim/types";
 import { groundY } from "./terrain3d";
-import { flattenToLambert, loadRigged, normalise, type Rigged } from "./gltf";
+import { HUT_R, villageFootprint, villageGrow } from "./layout";
+export { villageFootprint, villageGrow };
+import { bakedGeometry, flattenToLambert, loadRigged, normalise, type Rigged } from "./gltf";
 import models from "../../data/models.json";
 
 /** ป้ายลอยเหนือหมู่บ้าน บอกว่ากำลังขาดอะไร — ตัวที่ทำให้ผู้เล่นรู้ว่าตอนนี้ควรทำอะไร */
@@ -55,29 +57,33 @@ function glowTexture(): THREE.Texture {
 const GLOW_TEX = /* @__PURE__ */ (() => { let t: THREE.Texture | null = null;
   return () => (t ??= glowTexture()); })();
 
-const HUT_R = 0.42;
 const HUT_GEO = new THREE.ConeGeometry(HUT_R, 0.8, 6);
 HUT_GEO.translate(0, 0.4, 0);
 const WALL_GEO = new THREE.CylinderGeometry(0.34, 0.38, 0.42, 6);
 WALL_GEO.translate(0, 0.21, 0);
 
-/** กระท่อมหลังไกลสุดอยู่ที่รัศมีเท่านี้ (ดู build() ข้างล่าง) */
-const HUT_SPREAD = 1.06;
+/** รูปทรงกระท่อมจากไฟล์ — มาถึงทีหลัง ระหว่างรอใช้กรวยซ้อนทรงกระบอกแบบเดิม
+ *  โหลดครั้งเดียวทั้งเกม ไม่ใช่หลังละครั้ง เพราะทุกหมู่บ้านใช้รูปทรงเดียวกัน */
+let HUT_BAKED: THREE.BufferGeometry | null = null;
 
-/** หมู่บ้านโตขึ้นตามประชากร — ใช้ที่เดียวกันทั้งตอนวาดกระท่อมและตอนวางชาวบ้าน */
-export const villageGrow = (v: Village) => 0.75 + Math.min(0.55, v.pop / 120);
 
-/** ขอบนอกสุดที่กลุ่มกระท่อมกินจริง `villagers3d.ts` ใช้ค่านี้เพื่อไม่ให้คนไปยืนซ้อนอยู่ในหลังคา
- *  ถ้าแก้ผังกระท่อมใน build() ต้องแก้ HUT_SPREAD ด้วย ไม่งั้นคนจะจมหายไปในหมู่บ้านเงียบๆ */
-export const villageFootprint = (v: Village) => (HUT_SPREAD + HUT_R) * villageGrow(v);
 
 export class Villages3D {
   readonly group = new THREE.Group();
   private byId = new Map<number, VillageParts>();
   private askTex: Record<NeedId, THREE.Texture>;
 
+  /** รอให้รูปทรงกระท่อมมาถึง — เทสต์ภาพใช้ตัวนี้ */
+  readonly ready: Promise<void>;
+
   constructor() {
     this.askTex = { food: askTexture("food"), wood: askTexture("wood"), shelter: askTexture("shelter") };
+    this.ready = bakedGeometry(models.props.hut, models.props.tint).then((g) => {
+      HUT_BAKED = g;
+      // หมู่บ้านที่สร้างไปแล้วยังเป็นกรวยอยู่ ต้องล้างทิ้งให้มันสร้างใหม่รอบหน้า
+      for (const [, e] of this.byId) this.group.remove(e.root);
+      this.byId.clear();
+    });
   }
 
   update(s: GameState, time: number, daylight = 1) {
@@ -99,13 +105,22 @@ export class Villages3D {
     const huts = new THREE.Group();
     const roofMat = new THREE.MeshLambertMaterial({ color: 0xa8713f });
     const wallMat = new THREE.MeshLambertMaterial({ color: 0xd9c9a4 });
+    // รูปทรงจากไฟล์เก็บสีไว้ในจุดยอดแล้ว จึงใช้วัสดุตัวเดียวทั้งหลัง
+    const bakedMat = new THREE.MeshLambertMaterial({ vertexColors: true });
     for (let i = 0; i < 6; i++) {
       const hut = new THREE.Group();
+      if (HUT_BAKED) {
+        const body = new THREE.Mesh(HUT_BAKED, bakedMat);
+        body.scale.setScalar(HUT_R * 2.1);
+        body.castShadow = true;
+        hut.add(body);
+      } else {
       const wall = new THREE.Mesh(WALL_GEO, wallMat);
       const roof = new THREE.Mesh(HUT_GEO, roofMat);
       roof.position.y = 0.42;
       wall.castShadow = roof.castShadow = true;
       hut.add(wall, roof);
+      }
       const a = (i / 6) * Math.PI * 2 + v.id;
       const rad = i === 0 ? 0 : 0.62 + ((i * 37) % 10) / 18;
       hut.position.set(Math.cos(a) * rad, 0, Math.sin(a) * rad);

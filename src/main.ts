@@ -480,7 +480,10 @@ if (import.meta.env.DEV)
   (window as unknown as Record<string, unknown>).__genesis =
     { get game() { return game; }, world, villages, villagers, creature, terrain: () => terrain,
       get creatureReady() { return creatureLoaded; },
+      get propsReady() { return propsLoaded; },
       state: () => ({ pointers: pointers.size, dragged, armed }) };
 let creatureLoaded = false;
+let propsLoaded = false;
 void creature.ready.then(() => { creatureLoaded = true; });
+void Promise.all([terrain.propsReady, villages.ready]).then(() => { propsLoaded = true; });
 loop.start();
