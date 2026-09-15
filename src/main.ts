@@ -365,7 +365,7 @@ const loop = new FixedLoop(
     terrain.update(s, now);
     villages.update(s, now, world.daylight);
     villagers.update(s, dt);
-    creature.update(s, s.creature, now);
+    creature.update(s, s.creature, now, dt);
     const sp = armed ? SPELLS.find((x) => x.id === armed)! : null;
     fx.setCursor(s, hover ?? selected, sp ? sp.radius : null, sp?.dark ?? false);
     hand.setGrip(!!armed || lifting || !!s.carrying);
@@ -479,5 +479,8 @@ window.addEventListener("resize", () => world.resize());
 if (import.meta.env.DEV)
   (window as unknown as Record<string, unknown>).__genesis =
     { get game() { return game; }, world, villages, villagers, creature, terrain: () => terrain,
+      get creatureReady() { return creatureLoaded; },
       state: () => ({ pointers: pointers.size, dragged, armed }) };
+let creatureLoaded = false;
+void creature.ready.then(() => { creatureLoaded = true; });
 loop.start();

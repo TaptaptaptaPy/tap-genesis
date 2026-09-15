@@ -4,6 +4,8 @@ import { influenceOf } from "../sim/village";
 import balance from "../../data/balance.json";
 import type { Creature, GameState, NeedId, Village } from "../sim/types";
 import { groundY } from "./terrain3d";
+import { flattenToLambert, loadRigged, normalise, type Rigged } from "./gltf";
+import models from "../../data/models.json";
 
 /** ป้ายลอยเหนือหมู่บ้าน บอกว่ากำลังขาดอะไร — ตัวที่ทำให้ผู้เล่นรู้ว่าตอนนี้ควรทำอะไร */
 const ASK_COLOR: Record<NeedId, string> = {
@@ -238,101 +240,91 @@ export class Villages3D {
 }
 
 /** สัตว์ของผู้เล่น: ลำตัว หัว สี่ขาที่สลับเฟสตอนเดิน และหางที่แกว่ง */
+/** สัตว์ของพระเจ้า
+ *
+ *  เคยเป็นทรงกลมกับทรงกระบอกต่อกันแล้วแกว่งขาด้วย `Math.sin` ซึ่งได้แค่ "มีอะไรขยับ"
+ *  ตอนนี้เป็นโมเดลที่ rig มาแล้วจริง ท่าทางมาจาก `c.act` ที่ `src/sim/creature.ts` ตัดสินใจอยู่แล้ว
+ *  แปลว่าสิ่งที่เห็นบนจอคือสิ่งที่มันกำลังทำจริงๆ ไม่ใช่ภาพประกอบ
+ *
+ *  วงแหวนความผูกพันกับสัญลักษณ์อารมณ์ยังเป็นของเดิม เพราะสองอันนั้นคือการบอกข้อมูล
+ *  ไม่ใช่การตกแต่ง ถ้าเอาออกผู้เล่นจะไม่รู้ว่าสัตว์รู้สึกยังไงกับสิ่งที่เพิ่งทำลงไป
+ */
 export class Creature3D {
   readonly root = new THREE.Group();
-  private body: THREE.Mesh;
-  private head: THREE.Group;
-  private legs: THREE.Mesh[] = [];
-  private tail: THREE.Mesh;
+  /** รอให้โมเดลมาถึงก่อนค่อยถ่ายภาพ — เทสต์ภาพใช้ตัวนี้ */
+  readonly ready: Promise<void>;
+  private rig: Rigged | null = null;
   private aura: THREE.Mesh;
   private moodSprite: THREE.Sprite;
   private moodTex: { good: THREE.Texture; bad: THREE.Texture };
+  private clip = "";
+  /** ท่าที่กำลังเล่นอยู่ — เปิดออกมาให้เทสต์ตรวจว่าภาพตรงกับสิ่งที่สัตว์กำลังทำจริง */
+  get playing() { return this.clip; }
 
   constructor() {
-    const skin = new THREE.MeshLambertMaterial({ color: 0xa88f78 });
-    this.body = new THREE.Mesh(new THREE.SphereGeometry(0.42, 16, 12), skin);
-    this.body.scale.set(1, 0.82, 1.25);
-    this.body.castShadow = true;
-    this.root.add(this.body);
-
-    this.head = new THREE.Group();
-    const headMesh = new THREE.Mesh(new THREE.SphereGeometry(0.26, 14, 10), skin);
-    headMesh.castShadow = true;
-    const snout = new THREE.Mesh(new THREE.SphereGeometry(0.15, 10, 8),
-      new THREE.MeshLambertMaterial({ color: 0x8e7663 }));
-    snout.position.set(0, -0.04, 0.22);
-    const earGeo = new THREE.ConeGeometry(0.09, 0.22, 5);
-    const earL = new THREE.Mesh(earGeo, skin); earL.position.set(-0.13, 0.22, -0.02);
-    const earR = new THREE.Mesh(earGeo, skin); earR.position.set(0.13, 0.22, -0.02);
-    const eyeGeo = new THREE.SphereGeometry(0.045, 8, 6);
-    const eyeMat = new THREE.MeshBasicMaterial({ color: 0x141a1c });
-    const eyeL = new THREE.Mesh(eyeGeo, eyeMat); eyeL.position.set(-0.11, 0.06, 0.2);
-    const eyeR = new THREE.Mesh(eyeGeo, eyeMat); eyeR.position.set(0.11, 0.06, 0.2);
-    this.head.add(headMesh, snout, earL, earR, eyeL, eyeR);
-    this.head.position.set(0, 0.24, 0.42);
-    this.root.add(this.head);
-
-    const legGeo = new THREE.CylinderGeometry(0.07, 0.055, 0.42, 6);
-    legGeo.translate(0, -0.21, 0);
-    for (const [lx, lz] of [[-0.22, 0.3], [0.22, 0.3], [-0.22, -0.28], [0.22, -0.28]] as const) {
-      const leg = new THREE.Mesh(legGeo, skin);
-      leg.position.set(lx, -0.12, lz);
-      leg.castShadow = true;
-      this.legs.push(leg);
-      this.root.add(leg);
-    }
-
-    const tailGeo = new THREE.CylinderGeometry(0.06, 0.02, 0.5, 5);
-    tailGeo.translate(0, 0.25, 0);
-    this.tail = new THREE.Mesh(tailGeo, skin);
-    this.tail.position.set(0, 0.16, -0.5);
-    this.tail.rotation.x = -2.2;
-    this.root.add(this.tail);
-
     this.aura = new THREE.Mesh(
       new THREE.RingGeometry(0.62, 0.74, 32),
       new THREE.MeshBasicMaterial({ color: 0xf0d38a, transparent: true, opacity: 0.4,
                                     side: THREE.DoubleSide, depthWrite: false }));
     this.aura.rotation.x = -Math.PI / 2;
-    this.aura.position.y = -0.44;
+    this.aura.position.y = 0.02;
     this.root.add(this.aura);
 
     this.moodTex = { good: moodTexture("✦", "#f0cd78"), bad: moodTexture("✕", "#c44e4e") };
     this.moodSprite = new THREE.Sprite(new THREE.SpriteMaterial({
       map: this.moodTex.good, transparent: true, depthTest: false }));
     this.moodSprite.scale.set(0.7, 0.7, 1);
-    this.moodSprite.position.y = 1.15;
+    this.moodSprite.position.y = 1.5;
     this.moodSprite.visible = false;
     this.root.add(this.moodSprite);
+
+    this.ready = loadRigged(models.creature.file).then((r) => {
+      normalise(r.scene);
+      flattenToLambert(r.scene);
+      r.scene.rotation.y = models.creature.faceOffset;
+      this.rig = r;
+      this.root.add(r.scene);
+    });
   }
 
-  update(s: GameState, c: Creature, time: number) {
-    this.root.visible = c.alive;
-    if (!c.alive) return;
+  /** ท่าที่ควรเล่นตอนนี้ — อ่านจากสภาพของสัตว์ล้วน ไม่มีการสุ่ม
+   *  ลำดับสำคัญ: ตายมาก่อนทุกอย่าง แล้วค่อยงานที่กำลังทำ แล้วค่อยการเดิน แล้วค่อยความเหนื่อย */
+  private wanted(c: Creature): string {
+    const k = models.creature.clips;
+    if (!c.alive) return k.death;
+    if (c.act === "forage" && !c.tgt) return k.forage;
+    if (c.act === "raid" && !c.tgt) return k.raid;
+    if (c.act === "worship") return k.worship;
+    if (c.tgt) return c.need === "tired" ? k.walk : k.run;
+    return c.need === "tired" ? k.tired : k.idle;
+  }
+
+  update(s: GameState, c: Creature, time: number, dt: number) {
+    this.root.visible = c.alive || !!this.rig;
     const scale = 0.7 + bodySize(c) * 0.9;
     this.root.scale.setScalar(scale);
     const y = groundY(s, c.x + 0.5, c.y + 0.5);
-    const moving = !!c.tgt;
-    const bob = Math.sin(time * 0.009) * (moving ? 0.05 : 0.02);
-    this.root.position.set(c.x + 0.5, y + 0.5 * scale + bob, c.y + 0.5);
+    this.root.position.set(c.x + 0.5, y, c.y + 0.5);
     this.root.rotation.y = c.facing;
 
-    const phase = time * 0.012;
-    this.legs.forEach((leg, i) => {
-      const swing = moving ? Math.sin(phase + (i % 2 ? Math.PI : 0) + (i > 1 ? 0.6 : 0)) * 0.5 : 0;
-      leg.rotation.x = swing;
-    });
-    this.tail.rotation.z = Math.sin(phase * 0.6) * 0.3;
-    this.head.rotation.x = c.need === "tired" ? 0.35 : Math.sin(time * 0.002) * 0.08;
+    if (this.rig) {
+      const want = this.wanted(c);
+      if (want !== this.clip) { this.rig.play(want); this.clip = want; }
+      // ท่าเดินต้องเร็วขึ้นตามความไวของตัวมันเอง ไม่งั้นตัวที่วิ่งเร็วจะดูเหมือนลอยไปกับพื้น
+      const speed = c.tgt ? 0.8 + c.genes.speed * 0.9 : 1;
+      this.rig.mixer.timeScale = speed;
+      this.rig.update(dt);
+    }
 
-    (this.aura.material as THREE.MeshBasicMaterial).opacity = 0.18 + c.bond * 0.5;
+    (this.aura.material as THREE.MeshBasicMaterial).opacity = c.alive ? 0.18 + c.bond * 0.5 : 0;
 
-    if (Math.abs(c.mood) > 0.12) {
+    if (c.alive && Math.abs(c.mood) > 0.12) {
       this.moodSprite.visible = true;
       (this.moodSprite.material as THREE.SpriteMaterial).map =
         c.mood > 0 ? this.moodTex.good : this.moodTex.bad;
       (this.moodSprite.material as THREE.SpriteMaterial).needsUpdate = true;
     } else this.moodSprite.visible = false;
+    void time;
   }
 }
 

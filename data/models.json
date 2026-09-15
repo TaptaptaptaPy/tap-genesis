@@ -1,0 +1,22 @@
+{
+  "_note": "ทะเบียนโมเดลของชั้นภาพ — `src/sim/` ห้ามอ่านไฟล์นี้เด็ดขาด เพราะมันเป็นเรื่องของหน้าจอล้วน",
+  "_clips": "ชื่อท่าเป็นชื่อที่อยู่ในไฟล์จริง ห้ามเดา ทุกชุดโมเดลตั้งชื่อไม่เหมือนกัน",
+  "creature": {
+    "file": "/assets/models/creature-ox.glb",
+    "credit": "Quaternius · Ultimate Animated Animals · CC0",
+    "_faceOffset": "โมเดลหันหน้าไปทางไหนตอนมุม 0 — บวกเข้ากับ c.facing",
+    "faceOffset": 1.5707963,
+    "clips": {
+      "idle": "Idle",
+      "tired": "Idle_Headlow",
+      "walk": "Walk",
+      "run": "Gallop",
+      "forage": "Eating",
+      "raid": "Attack_Headbutt",
+      "help": "Walk",
+      "worship": "Idle_2",
+      "wander": "Walk",
+      "death": "Death"
+    }
+  }
+}

@@ -10,6 +10,8 @@ async function ready(page: import("@playwright/test").Page) {
     const g = (window as any).__genesis;
     return !!g && g.game.state.villages.length > 0;
   });
+  // โมเดลสัตว์โหลดแบบ async ถ้าไม่รอ ภาพจะจับตอนที่ยังไม่มีสัตว์บนเกาะ
+  await page.waitForFunction(() => (window as any).__genesis?.creatureReady === true);
   await page.waitForTimeout(400);
 }
 
@@ -44,4 +46,26 @@ test("เปิดเกมแล้วต้องไม่มี error ใน 
   await page.goto(world(20260915, 0.3));
   await ready(page);
   expect(errors).toEqual([]);
+});
+
+test("สัตว์ระยะใกล้ — ต้องเป็นตัวที่มีรูปร่างจริง ไม่ใช่ก้อน", async ({ page }) => {
+  // ภาพเกาะทั้งใบจับการเปลี่ยนแปลงของสัตว์ไม่ได้ มันเล็กกว่าเกณฑ์ความต่างที่ยอมให้
+  // ต้องซูมลงไปหาตัวมันโดยเฉพาะ ไม่งั้นเปลี่ยนโมเดลทั้งตัวแล้วเทสต์ยังขึ้นเขียว
+  await page.goto(world(20260915, 0.3));
+  await ready(page);
+  await page.evaluate(() => {
+    const g = (window as any).__genesis, w = g.world;
+    // ใช้ตำแหน่งที่ "วาดจริง" ของสัตว์ ไม่ใช่พิกัดช่องจาก state
+    // เพราะความสูงของพื้นตรงนั้นอยู่ในชั้นภาพ ไม่ได้อยู่ใน state
+    const p = g.creature.root.position;
+    // ตั้งกล้องตรงๆ ไม่ผ่าน focusOn เพราะมันหน่วงระยะไว้ที่ 7 หน่วย
+    // ซึ่งไกลเกินไปสำหรับตัวที่สูงไม่ถึงหนึ่งหน่วย
+    w.center.set(p.x, p.y + 0.45, p.z);
+    w.targetCenter?.set?.(p.x, p.y + 0.45, p.z);
+    w.distance = w.targetDistance = 2.6;
+    w.elevation = 0.42;
+    w.azimuth = Math.PI * 0.3;
+  });
+  await page.waitForTimeout(900);
+  await expect(page).toHaveScreenshot("creature-close.png", { maxDiffPixelRatio: 0.004 });
 });
