@@ -34,6 +34,17 @@ const SKIN: Record<BiomeId, { lo: RGB; hi: RGB }> = {
 const mixc = (a: RGB, b: RGB, t: number): RGB =>
   [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
 
+/** ธรรม/อธรรมของรัชสมัยที่ผืนดินกำลังแสดงอยู่ -1..+1
+ *  เป็นตัวแปรระดับโมดูลเพราะ `tileColor()` ถูกเรียกจากลูปสร้างสีของทั้งเกาะ
+ *  การส่งพารามิเตอร์ลงไปทุกช่องไม่ได้ให้อะไรเพิ่ม นอกจากทำให้อ่านยากขึ้น */
+let alignTint = 0;
+
+/** สีของผืนดินตามรัชสมัย — ต้องเบามาก
+ *  CLAUDE.md จดไว้แล้วว่าสีหญ้าที่ต่างจากสีทุ่งมากจะอ่านเป็นเศษดินกระจายเต็มเกาะ
+ *  ที่นี่คือ "ทั้งเกาะเปลี่ยนอารมณ์" ไม่ใช่ "มีจุดด่างเพิ่มขึ้น" */
+const DARK_EARTH: RGB = [0.42, 0.31, 0.22];
+const HOLY_EARTH: RGB = [0.40, 0.68, 0.34];
+
 function tileColor(t: Tile): RGB {
   const sk = SKIN[t.biome];
   let c: RGB;
@@ -46,6 +57,10 @@ function tileColor(t: Tile): RGB {
     if (t.blight > 0.03) c = mixc(c, [0.55, 0.45, 0.28], Math.min(0.5, t.blight * 0.5));
     if (t.burn > 0.02) c = mixc(c, [0.72, 0.28, 0.10], Math.min(0.75, t.burn * 0.75));
   }
+  // ผืนดินของเทพพิโรธแห้งลงและหม่นลง ของเทพเมตตาเขียวขึ้นกว่าที่ธรรมชาติให้มาเอง
+  if (!isWater(t.biome) && alignTint !== 0)
+    c = alignTint < 0 ? mixc(c, DARK_EARTH, -alignTint * 0.30)
+                      : mixc(c, HOLY_EARTH, alignTint * 0.16);
   const s = 0.93 + t.shade * 0.07;
   return [c[0] * s, c[1] * s, c[2] * s];
 }
@@ -136,8 +151,20 @@ export class Terrain3D {
   }
 
   /** สีเปลี่ยนบ่อย (ความอุดม ไฟ ดินเสีย) · ต้นไม้เปลี่ยนเฉพาะตอนชีวนิเวศเปลี่ยนจริง */
+  /** ผืนดินไล่ตามรัชสมัยช้ากว่าท้องฟ้า — แผ่นดินไม่ได้เปลี่ยนใจเร็วเท่าอากาศ
+   *  คืน true ถ้าค่าขยับ ซึ่งแปลว่าต้องสร้างสีของทั้งเกาะใหม่
+   *  `snap` มีไว้ให้เทสต์ภาพตั้งค่าแล้วเห็นผลทันทีโดยไม่ต้องเดินลูป */
+  setAlign(align: number, snap = false): boolean {
+    this.water.setAlign(align, snap);
+    const want = Math.max(-1, Math.min(1, align));
+    if (Math.abs(want - alignTint) <= 0.04) return false;
+    alignTint = snap ? want : alignTint + (want - alignTint) * 0.05;
+    return true;
+  }
+
   update(s: GameState, time: number, daylight = 1) {
-    if (s.tick - this.tickStamp >= 4 || s.terrainVersion !== this.version) {
+    const drifted = this.setAlign(s.align);
+    if (s.tick - this.tickStamp >= 4 || s.terrainVersion !== this.version || drifted) {
       this.tickStamp = s.tick;
       this.refresh(s, s.terrainVersion !== this.version);
       this.version = s.terrainVersion;

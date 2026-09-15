@@ -140,7 +140,29 @@ export class Water3D {
     this.tex.needsUpdate = true;
   }
 
+  /** ทะเลกินพื้นที่จอมากที่สุดในเฟรม และกล้องก้มลงจนโดมท้องฟ้าแทบไม่อยู่ในภาพ
+   *  ถ้าจะให้รัชสมัย "มองเห็นได้" จริง ทะเลคือที่ที่ต้องเปลี่ยน ไม่ใช่ท้องฟ้า
+   *  ทะเลของเทพพิโรธขุ่นและอมเขียวเทา ของเทพเมตตาใสขึ้นและฟ้าขึ้น */
+  private readonly shallowBase = new THREE.Color(0x3f8fa6);
+  private readonly deepBase = new THREE.Color(0x11405c);
+  private readonly shallowDark = new THREE.Color(0x4a6b52);
+  private readonly deepDark = new THREE.Color(0x1d2e2a);
+  private readonly shallowHoly = new THREE.Color(0x4fa8c8);
+  private readonly deepHoly = new THREE.Color(0x0e4a72);
+  private alignShown = 0;
+
+  setAlign(align: number, snap = false) {
+    const want = Math.max(-1, Math.min(1, align));
+    this.alignShown = snap ? want : this.alignShown + (want - this.alignShown) * 0.02;
+    const dark = Math.max(0, -this.alignShown), holy = Math.max(0, this.alignShown);
+    (this.mat.uniforms.shallowColor.value as THREE.Color)
+      .copy(this.shallowBase).lerp(this.shallowDark, dark * 0.7).lerp(this.shallowHoly, holy * 0.6);
+    (this.mat.uniforms.deepColor.value as THREE.Color)
+      .copy(this.deepBase).lerp(this.deepDark, dark * 0.7).lerp(this.deepHoly, holy * 0.6);
+  }
+
   update(s: GameState, timeMs: number, daylight: number) {
+    this.setAlign(s.align);
     this.refresh(s);
     this.mat.uniforms.time.value = timeMs * 0.001;
     this.mat.uniforms.daylight.value = daylight;

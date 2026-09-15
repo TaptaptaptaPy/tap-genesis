@@ -384,7 +384,9 @@ const testParams = (() => {
   const seed = q.get("seed");
   if (seed === null) return null;
   const t = q.get("t");
-  return { seed: Number(seed) | 0, t: t === null ? 0.35 : Number(t) };
+  const a = q.get("align");
+  return { seed: Number(seed) | 0, t: t === null ? 0.35 : Number(t),
+           align: a === null ? 0 : Number(a) };
 })();
 
 /** เพลงบอกสภาพของรัชสมัย — โลกที่ดูแลดีกับโลกที่กำลังพัง ฟังไม่เหมือนกัน
@@ -396,6 +398,9 @@ const bgm = new Bgm("/assets/audio", ["calm", "night", "strain"]);
 function bgmFor(s: Game["state"], daylight: number): string {
   const hungry = s.villages.filter((v: Village) => v.needs.food < 0.5 || v.plague > 0).length;
   if (hungry > 0 && hungry >= s.villages.length / 2) return "strain";
+  // รัชสมัยที่เดินมาไกลทางอธรรมไม่ควรฟังเหมือนเช้าวันที่ทุกอย่างเรียบร้อย
+  // ใน B&W ดนตรีเป็นหนึ่งในของที่เปลี่ยนตามแกนนี้ พร้อมกับฟ้าและวิหาร
+  if (s.align <= balance.align.darkMusicAt) return "strain";
   return daylight < 0.25 ? "night" : "calm";
 }
 
@@ -418,6 +423,9 @@ const loop = new FixedLoop(
     if (Math.abs(r.width - world.width) > 1 || Math.abs(r.height - world.height) > 1) world.resize();
 
     world.shake = Math.max(world.shake, s.shake);
+    // รัชสมัยที่เลือกเดินมาต้องมองเห็นได้จากฟ้า จากแสง และจากผืนดิน ไม่ใช่แค่ตัวเลขในแถบบน
+    // ต้องมาก่อน setTimeOfDay() เพราะเวลาเป็นคนหยิบสีของรัชสมัยไปใช้
+    world.setAlign(s.align, dt);
     // เวลาบนเกาะเดินตาม tick ไม่ใช่นาฬิกาจริง กด 2x/4x แล้วพระอาทิตย์ต้องเคลื่อนเร็วขึ้นด้วย
     world.setTimeOfDay(testParams?.t ??
       ((s.tick % balance.time.ticksPerDay) / balance.time.ticksPerDay + 0.18) % 1);
@@ -544,6 +552,10 @@ function newGame() {
 const auto = testParams ? null : readSlot("auto");
 if (testParams) {
   game = createGame(testParams.seed);
+  // เทสต์ภาพต้องตั้งรัชสมัยแล้วเห็นผลทันที เพราะลูปถูกหยุดไว้ ค่าจะไม่มีวันไล่ตามเอง
+  game.state.align = testParams.align;
+  world.setAlign(testParams.align, 99);
+  terrain.setAlign(testParams.align, true);
   rebuildTerrain();
   world.resize();
   hud.buildSpells(game.state.align, null);

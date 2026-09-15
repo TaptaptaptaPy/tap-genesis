@@ -35,6 +35,17 @@ export class World3D {
   private readonly cloudNight = new THREE.Color(0x3a4460);
   private readonly sunNoon = new THREE.Color(0xfff2d8);
   private readonly sunLow = new THREE.Color(0xffb066);
+  // สีของรัชสมัย — ฟ้าของเทพเมตตากับเทพพิโรธต้องไม่ใช่ฟ้าเดียวกัน
+  // ใน B&W สภาพแวดล้อม ดนตรี และวิหารเปลี่ยนตามแกนนี้ทั้งหมด มันคือเสาหลักของเกม
+  // ไม่ใช่ตัวเลขในแถบบน ของเดิมที่นี่ไม่มีอะไรอ่าน `align` เลยสักบรรทัด
+  private readonly zenithDark = new THREE.Color(0x3a1d22);
+  private readonly horizonDark = new THREE.Color(0x8a5340);
+  private readonly zenithHoly = new THREE.Color(0x2b7fb4);
+  private readonly horizonHoly = new THREE.Color(0xd8e6ea);
+  private readonly sunDark = new THREE.Color(0xd8864e);
+  private readonly sunHoly = new THREE.Color(0xfff8e4);
+  /** ค่าที่ใช้วาดจริง ไล่ตาม `align` แบบนุ่มๆ ไม่งั้นคาถาเดียวจะพลิกสีทั้งเกาะทันที */
+  private alignShown = 0;
   private hemi!: THREE.HemisphereLight;
   private skyMat!: THREE.ShaderMaterial;
   /** เมฆ — ใช้พื้นผิวก้อนเดียวกับเงาเมฆบนพื้น เพื่อให้เงาตรงกับก้อนที่เห็นจริง */
@@ -192,6 +203,13 @@ export class World3D {
 
   /** วัฏจักรกลางวัน/กลางคืน — phase 0..1 โดย 0.25 คือเที่ยงวัน 0.75 คือเที่ยงคืน
    *  แสงดวงเดียวค้างมุมเดิมทั้งเกมทำให้เกาะดูเป็นภาพนิ่ง ไม่ใช่ที่ที่มีเวลาเดินอยู่ */
+  /** ธรรม/อธรรมของรัชสมัย -1..+1 — เรียกทุกเฟรม ค่าที่วาดจริงจะไล่ตามช้าๆ
+   *  ต้องเรียกก่อน `setTimeOfDay()` ในเฟรมเดียวกัน เพราะเวลาเป็นคนเอาสีไปใช้ */
+  setAlign(align: number, dt = 0.016) {
+    const k = Math.min(1, dt * 0.6);
+    this.alignShown += (THREE.MathUtils.clamp(align, -1, 1) - this.alignShown) * k;
+  }
+
   setTimeOfDay(phase: number) {
     const t = phase * Math.PI * 2;
     const up = Math.sin(t);
@@ -208,14 +226,27 @@ export class World3D {
     // (CLAUDE.md จดไว้ว่าปรับ sun เป็น 1.45 แล้วหาย — แต่บรรทัดนี้เขียนทับค่านั้นทุกเฟรม)
     this.sun.intensity = night ? 0.26 + 0.12 * h : 0.18 + 0.92 * d;
     if (night) this.sun.color.copy(this.moon);
-    else this.sun.color.copy(this.sunLow).lerp(this.sunNoon, d);
+    else {
+      const noon = this.sunNoon.clone()
+        .lerp(this.sunDark, Math.max(0, -this.alignShown) * 0.75)
+        .lerp(this.sunHoly, Math.max(0, this.alignShown) * 0.7);
+      this.sun.color.copy(this.sunLow).lerp(noon, d);
+    }
 
-    this.hemi.intensity = 0.34 + 0.28 * d;
+    // อธรรมทำให้แสงรอบข้างตายลง เงาจึงแข็งขึ้นโดยที่ไม่ต้องแตะเงาเลย
+    this.hemi.intensity = (0.34 + 0.28 * d) * (1 - Math.max(0, -this.alignShown) * 0.3);
     this.hemi.color.copy(this.hemiNight).lerp(this.hemiDay, d);
 
-    const horizon = this.horizonNight.clone().lerp(this.horizonDay, d);
+    // สีของกลางวันขึ้นกับรัชสมัย: อธรรมได้ฟ้าสีเลือดจางกับขอบฟ้าสีทราย
+    // ธรรมได้ฟ้าใสกว่าและขอบฟ้าที่เกือบเป็นสีขาว
+    const dark = Math.max(0, -this.alignShown), holy = Math.max(0, this.alignShown);
+    const zDay = this.zenithDay.clone().lerp(this.zenithDark, dark * 0.85)
+                                       .lerp(this.zenithHoly, holy * 0.6);
+    const hDay = this.horizonDay.clone().lerp(this.horizonDark, dark * 0.8)
+                                        .lerp(this.horizonHoly, holy * 0.55);
+    const horizon = this.horizonNight.clone().lerp(hDay, d);
     (this.skyMat.uniforms.zenith.value as THREE.Color)
-      .copy(this.zenithNight).lerp(this.zenithDay, d);
+      .copy(this.zenithNight).lerp(zDay, d);
     (this.skyMat.uniforms.horizon.value as THREE.Color).copy(horizon);
     (this.skyMat.uniforms.glow.value as THREE.Color).copy(this.sun.color);
     (this.skyMat.uniforms.sunDir.value as THREE.Vector3)
@@ -224,15 +255,38 @@ export class World3D {
     // เมฆกลางวันขาว ตอนเย็นรับแสงส้ม กลางคืนเป็นเงาเทาเข้ม
     (this.skyMat.uniforms.cloudLight.value as THREE.Color)
       .copy(this.cloudNight).lerp(this.sun.color, d);
-    this.skyMat.uniforms.cloudAmount.value = 0.30 + 0.32 * d;
-    this.clouds.shadow.value = 0.10 + 0.26 * d;
+    // ฟ้าของเทพพิโรธมีเมฆหนากว่าและเงาเมฆเข้มกว่า ฟ้าของเทพเมตตาโปร่งกว่า
+    this.skyMat.uniforms.cloudAmount.value =
+      (0.30 + 0.32 * d) * (1 + Math.max(0, -this.alignShown) * 0.55
+                             - Math.max(0, this.alignShown) * 0.3);
+    this.clouds.shadow.value = (0.10 + 0.26 * d) * (1 + Math.max(0, -this.alignShown) * 0.6);
     // หมอกต้องเป็นสีขอบฟ้า ไม่ใช่สีบนหัว ไม่งั้นเกาะฝั่งไกลจะจางไปคนละสีกับฟ้าที่อยู่หลังมัน
     (this.scene.fog as THREE.Fog).color.copy(horizon);
-    this.renderer.toneMappingExposure = 0.96 + 0.14 * d;
+    // โลกของเทพพิโรธมืดลงทั้งใบ ไม่ใช่แค่เปลี่ยนสี
+    this.renderer.toneMappingExposure =
+      (0.96 + 0.14 * d) * (1 - Math.max(0, -this.alignShown) * 0.14);
   }
   orbitBy(dx: number, dy: number) {
     this.azimuth -= dx * 0.006;
     this.elevation = THREE.MathUtils.clamp(this.elevation - dy * 0.005, 0.28, 1.4);
+  }
+
+  /** วาดหนึ่งเฟรมแล้วอ่านพิกเซลกลับมาเฉลี่ยเป็นสีเดียว
+   *  ต้องอ่านทันทีหลังวาด เพราะ WebGL ล้างบัฟเฟอร์ทิ้งหลัง composite
+   *  (canvas.toDataURL() หรือ drawImage() จากที่อื่นจะได้ภาพดำสนิททุกครั้ง)
+   *  มีไว้ให้เทสต์ถามว่า "ภาพที่ออกมาจริงๆ ต่างกันไหม" ไม่ใช่ถามว่า uniform ถูกตั้งไหม */
+  sampleAverage(): [number, number, number] {
+    this.renderer.render(this.scene, this.camera);
+    const gl = this.renderer.getContext();
+    // ต้องอ่าน *ทั้งเฟรม* ไม่ใช่มุมล่างซ้าย 160x120 — readPixels นับ y จากล่างขึ้นบน
+    // อ่านแค่มุมเดียวจะได้แต่ทะเลกับพื้นล่างจอ ซึ่งเป็นส่วนที่รัชสมัยเปลี่ยนน้อยที่สุดพอดี
+    const w = gl.drawingBufferWidth, h = gl.drawingBufferHeight;
+    const px = new Uint8Array(w * h * 4);
+    gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, px);
+    let r = 0, g = 0, b = 0;
+    for (let i = 0; i < px.length; i += 4) { r += px[i]; g += px[i + 1]; b += px[i + 2]; }
+    const n = px.length / 4;
+    return [r / n, g / n, b / n];
   }
 
   /** สั่นกล้องตอนฟ้าผ่าหรือแผ่นดินไหว */

@@ -248,7 +248,9 @@
     "decayPerTick": 0.9985,
     "creatureRaid": -0.015,
     "creatureHelp": 0.012,
-    "creatureWorship": 0.005
+    "creatureWorship": 0.005,
+    "_darkMusicAt": "ธรรมต่ำกว่านี้ เพลงเปลี่ยนเป็นเพลงของรัชสมัยที่ปกครองด้วยความกลัว",
+    "darkMusicAt": -0.45
   },
   "combo": {
     "_note": "คาถาที่คุยกันได้ — ผลต่างออกไปถ้าพื้นตรงนั้นเพิ่งโดนคาถาอื่นมา",
