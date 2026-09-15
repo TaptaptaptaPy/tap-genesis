@@ -4,13 +4,14 @@ import { createGame, stepTick, stepEffects, castSpell, teach, stroke, smack, com
          snapshot, restore, saveLooksValid, totalPop, computeReign, placeCreature,
          grabAt, throwTo, dropCarry, whatIsAt, CARRY_NAME, carryLabel, nearestFolk,
          tileAt, advise, adviceEvery,
-         SPELLS, type Game, type CommandId } from "./sim/index";
+         SPELLS, type Game, type CommandId, type Village } from "./sim/index";
 import { World3D } from "./render/world3d";
 import { Terrain3D, groundY } from "./render/terrain3d";
 import { Creature3D, Villages3D } from "./render/actors3d";
 import { Villagers3D } from "./render/villagers3d";
 import { Hand3D, Thrown3D } from "./render/hand3d";
 import { unlock as unlockAudio, sfx, setMuted, isMuted } from "./core/audio";
+import { Bgm } from "./core/bgm";
 import { Fx3D } from "./render/fx3d";
 import { Hud } from "./ui/hud";
 import { clearSlot, readSlot, slotMeta, writeSlot, SLOTS, type SlotId } from "./core/storage";
@@ -86,7 +87,7 @@ function hitsCreature(px: number, py: number): boolean {
 cv.addEventListener("pointerdown", (e) => {
   // บาง pointer (เช่นที่ถูกยิงจากเครื่องมืออัตโนมัติ) ทำให้ setPointerCapture โยน error
   // ถ้าไม่ดักไว้ pointerdown จะตายกลางคันและการแตะครั้งนั้นหายไปทั้งครั้ง
-  unlockAudio();
+  unlockAudio(); bgm.unlock();
   try { cv.setPointerCapture(e.pointerId); } catch { /* ไม่จำเป็นต้องจับ pointer ก็เล่นได้ */ }
   const p = localPos(e);
   pointers.set(e.pointerId, p);
@@ -124,9 +125,9 @@ cv.addEventListener("pointermove", (e) => {
         strokePath = 0;
         const log = (m: string) => hud.say(m);
         if (strokeDown > TOUCH.smackPx) {
-          if (smack(game.state, game.rng, log)) sfx.scold();
+          if (smack(game.state, game.rng, log)) sfx.smack();
           strokeDown = 0;
-        } else if (stroke(game.state, game.rng, log)) sfx.praise();
+        } else if (stroke(game.state, game.rng, log)) sfx.stroke();
       }
     } else if (dragged) world.orbitBy(dx, dy);
     last = p;
@@ -148,7 +149,7 @@ cv.addEventListener("pointerup", (e) => {
   if (pointers.size < 2) pinchDist = 0;
   if (!wasSingle || dragged) return;
   // แตะตัวมันเฉยๆ ก็คือการลูบหนึ่งครั้ง
-  if (wasStroking) { if (stroke(game.state, game.rng, (m) => hud.say(m))) sfx.praise(); return; }
+  if (wasStroking) { if (stroke(game.state, game.rng, (m) => hud.say(m))) sfx.stroke(); return; }
 
   const now = performance.now();
   const near = Math.hypot(p.x - lastTapPos.x, p.y - lastTapPos.y) < DOUBLE_TAP_PX;
@@ -259,6 +260,7 @@ const bSound = document.getElementById("bSound")!;
 bSound.onclick = () => {
   unlockAudio();
   setMuted(!isMuted());
+  bgm.setMuted(isMuted());
   bSound.textContent = isMuted() ? "เสียงปิด" : "เสียงเปิด";
 };
 document.getElementById("bPraise")!.onclick = () => {
@@ -385,6 +387,19 @@ const testParams = (() => {
   return { seed: Number(seed) | 0, t: t === null ? 0.35 : Number(t) };
 })();
 
+/** เพลงบอกสภาพของรัชสมัย — โลกที่ดูแลดีกับโลกที่กำลังพัง ฟังไม่เหมือนกัน
+ *  ผู้เล่นจึงรู้ว่าเรื่องไปทางไหนโดยไม่ต้องอ่านตัวเลขบนแถบบน */
+const bgm = new Bgm("/assets/audio", ["calm", "night", "strain"]);
+
+/** เลือกเพลงจาก state ล้วน ไม่มีการสุ่ม
+ *  ลำดับสำคัญ: ความเดือดร้อนมาก่อนเวลากลางคืน เพราะมันเป็นข้อมูลที่เร่งด่วนกว่า */
+function bgmFor(s: Game["state"], daylight: number): string {
+  const hungry = s.villages.filter((v: Village) => v.needs.food < 0.5 || v.plague > 0).length;
+  if (hungry > 0 && hungry >= s.villages.length / 2) return "strain";
+  return daylight < 0.25 ? "night" : "calm";
+}
+
+let lastCombos = 0, lastPriests = 0, lastVillages = 1, creatureWasAlive = true;
 let lastAutosave = 0;
 const loop = new FixedLoop(
   balance.time.tickSeconds,
@@ -404,6 +419,19 @@ const loop = new FixedLoop(
     world.setTimeOfDay(testParams?.t ??
       ((s.tick % balance.time.ticksPerDay) / balance.time.ticksPerDay + 0.18) % 1);
     world.driftSky(dt);
+    // เสียงของเหตุการณ์ที่เกิดใน sim — เฝ้าตัวนับแทนที่จะยัด callback เข้าไปใน sim
+    // `src/sim/` ต้องไม่รู้จักเรื่องเสียง มันเป็นเรื่องของหน้าจอล้วน
+    if (s.combos !== lastCombos) { if (s.combos > lastCombos) sfx.combo(); lastCombos = s.combos; }
+    const priests = s.villages.reduce((n, v) => n + v.folk.reduce((m, f) => m + (f.priest ? 1 : 0), 0), 0);
+    if (priests > lastPriests) sfx.priest();
+    lastPriests = priests;
+    if (s.villages.length > lastVillages) sfx.found();
+    lastVillages = s.villages.length;
+    if (!s.creature.alive && creatureWasAlive) sfx.died();
+    creatureWasAlive = s.creature.alive;
+
+    bgm.want(bgmFor(s, world.daylight));
+    bgm.update(dt);
     terrain.update(s, now, world.daylight);
     villages.update(s, now, world.daylight);
     villagers.update(s, dt);
