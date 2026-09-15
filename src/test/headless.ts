@@ -206,6 +206,28 @@ function divine(g: Game, persona: Persona, st: GodStats, log: (m: string) => voi
     return;
   }
 
+  // เทพเมตตาลองเรียงคาถา: ฝนก่อนแล้วค่อยพร ดินที่ชุ่มน้ำรับพรได้ดีกว่า
+  // ถ้าไม่เดินเส้นนี้ ระบบผลร่วมของคาถาจะไม่เคยถูกทดสอบเลย
+  if (persona === "kind" && s.tick % (GOD.castEveryTicks * 5) === 0) {
+    const v = neediestVillage(s);
+    if (v && inInfluence(s, v.x, v.y)) {
+      const t = tileAt(s.tiles, v.x, v.y);
+      if (t && t.wet > balance.combo.wetGround) {
+        if (castSpell(s, "bless", v.x, v.y, g.rng, log)) { st.cast.bless = (st.cast.bless ?? 0) + 1; return; }
+      } else if (castSpell(s, "rain", v.x, v.y, g.rng, log)) { st.cast.rain = (st.cast.rain ?? 0) + 1; return; }
+    }
+  }
+  // เทพพิโรธก็เรียงเหมือนกัน แต่เพื่อให้สายฟ้าแล่นไปตามพื้นเปียก
+  if (persona === "wrath" && s.tick % (GOD.castEveryTicks * 5) === 0) {
+    const v = biggest(s);
+    if (v && inInfluence(s, v.x, v.y)) {
+      const t = tileAt(s.tiles, v.x, v.y);
+      if (t && t.wet > balance.combo.wetGround) {
+        if (castSpell(s, "bolt", v.x, v.y, g.rng, log)) { st.cast.bolt = (st.cast.bolt ?? 0) + 1; return; }
+      } else if (castSpell(s, "rain", v.x, v.y, g.rng, log)) { st.cast.rain = (st.cast.rain ?? 0) + 1; return; }
+    }
+  }
+
   // เทพเมตตาใช้มือสลับกับคาถา ไม่ใช่รอจนศรัทธาหมด
   // คนเล่นจริงก็หยิบของไปวางเองบ้าง เพราะมันเร็วกว่าและไม่เสียศรัทธาสักหน่วย
   if (persona === "kind" && s.tick % (GOD.castEveryTicks * 3) === 0) {
@@ -260,6 +282,7 @@ interface Outcome {
   gen: number; bond: number; size: number; fit: number;
   dead: boolean; starved: boolean; year: number; overflow: number;
   won: boolean; reign: string;
+  combos: number; priests: number;
   drift: string; disasters: string; god: GodStats;
 }
 
@@ -299,6 +322,8 @@ function runWorld(seed: number, persona: Persona): Outcome {
     gen: s.creature.gen, bond: s.creature.bond, size: bodySize(s.creature),
     fit: s.best?.fit ?? 0, dead: s.dead, overflow,
     won: s.won, reign: computeReign(s).title,
+    combos: s.combos,
+    priests: s.villages.reduce((n, v) => n + v.folk.reduce((m, f) => m + (f.priest ? 1 : 0), 0), 0),
     starved: s.villages.some((v) => v.needs.food < 0.5), year: s.year,
     drift: GENES.map((k) => `${GENE_NAME[k]} ${gen0[k].toFixed(2)}→${s.creature.genes[k].toFixed(2)}`).join("  "),
     disasters: Object.entries(seen).map(([k, v]) => `${k}×${v}`).join(" ") || "ไม่มี",
@@ -427,6 +452,11 @@ const personas = ["none", "kind", "wrath"] as Persona[];
 const strokeTotal = personas.reduce((n, p) => n + all[p].reduce((m, o) => m + o.god.strokes, 0), 0);
 const smackTotal = personas.reduce((n, p) => n + all[p].reduce((m, o) => m + o.god.smacks, 0), 0);
 console.log(`มือลูบและตีได้จริงไหม: ลูบรวม ${strokeTotal} ครั้ง · ตีรวม ${smackTotal} ครั้ง`);
+
+const comboTotal = personas.reduce((n, p) => n + all[p].reduce((m, o) => m + o.combos, 0), 0);
+const priestTotal = personas.reduce((n, p) => n + all[p].reduce((m, o) => m + o.priests, 0), 0);
+console.log(`คาถาคุยกันจริงไหม: ผลร่วมเกิดรวม ${comboTotal} ครั้ง · นักบวชที่เกิดจากมือ ${priestTotal} คน`);
+if (comboTotal === 0) console.log("  ← ไม่มีผลร่วมของคาถาเกิดขึ้นเลย ระบบนี้ไม่ได้ถูกทดสอบ");
 if (strokeTotal === 0 || smackTotal === 0)
   console.log("  ← มีทางที่ไม่เคยถูกเดินเลย ระบบสัมผัสไม่ได้ถูกทดสอบ");
 console.log(`มือหยิบของขว้างได้จริงไหม: ขว้างรวม ${throwTotal} ครั้ง` +

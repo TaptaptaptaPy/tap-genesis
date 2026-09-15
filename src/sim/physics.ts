@@ -199,7 +199,8 @@ function impact(s: GameState, p: Projectile, t: Tile | null, rng: Rng, log: (m: 
       const d = home ? Math.hypot(home.x + 0.5 - p.x, home.y + 0.5 - p.y) : 99;
       const name = p.folk?.name ?? "ผู้คน";
       if (home && d <= P.folkLandRadius) {
-        if (p.folk) putFolk(home, p.folk); else home.pop += 1;
+        // อุ้มขึ้นมาแล้ววางคืนถึงบ้านอย่างปลอดภัย — คนคนนั้นได้เห็นสิ่งที่คนอื่นไม่เคยเห็น
+        if (p.folk) { p.folk.priest = true; putFolk(home, p.folk); } else home.pop += 1;
         addAwe(home, 0.15);
         s.align = clamp(s.align + P.folkMoveAlign, -1, 1);
         s.fx.push({ kind: "spark", x: p.x, y: p.y, t: 0, life: 1.1, color: "#f0d38a" });

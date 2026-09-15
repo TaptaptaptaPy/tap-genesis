@@ -75,6 +75,9 @@ export function inInfluence(s: GameState, x: number, y: number): boolean {
 export const faithCap = (s: GameState) =>
   balance.faith.capBase + balance.faith.capPerBeliever * totalPop(s);
 
+/** จำนวนนักบวชในหมู่บ้านนี้ */
+export const priestsOf = (v: Village) => v.folk.reduce((n, f) => n + (f.priest ? 1 : 0), 0);
+
 export function stepVillages(s: GameState, rng: Rng, log: (m: string) => void): void {
   const V = balance.village, N = balance.needs;
   const cap = V.popCap, R = V.workRadius;
@@ -134,7 +137,9 @@ export function stepVillages(s: GameState, rng: Rng, log: (m: string) => void): 
     v.awe *= N.aweDecayPerTick;
     const target = clamp(
       N.beliefFloor + v.needs.food * N.beliefFromFood + v.needs.wood * N.beliefFromWood +
-      v.needs.shelter * N.beliefFromShelter + v.awe * N.beliefFromAwe, 0, 1);
+      v.needs.shelter * N.beliefFromShelter + v.awe * N.beliefFromAwe +
+      // คนที่พระเจ้าเคยอุ้มแล้ววางคืน เล่าสิ่งที่เห็นให้คนทั้งหมู่บ้านฟัง
+      priestsOf(v) * balance.folk.priestBelief, 0, 1);
     v.belief += (target - v.belief) * V.beliefDrift;
 
     s.faith = Math.min(s.faith + v.pop * v.belief * V.faithPerBeliever, faithCap(s));

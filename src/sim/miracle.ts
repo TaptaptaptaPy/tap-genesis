@@ -68,6 +68,7 @@ export function castSpell(s: GameState, id: string, cx: number, cy: number,
   s.faith -= cost;
   s.align = clamp(s.align + sp.alignShift, -1, 1);
   const N = balance.needs;
+  const K = balance.combo;
 
   switch (sp.id) {
     case "rain": {
@@ -86,19 +87,27 @@ export function castSpell(s: GameState, id: string, cx: number, cy: number,
       s.terrainVersion++;
       break;
     }
-    case "grove":
+    case "grove": {
+      let cleansed = 0;
       around(s, cx, cy, sp.radius, (t) => {
+        // ป่าที่ขึ้นบนดินเสีย ดูดพิษออกไปด้วย — ปลูกทับที่ที่พังแล้วคุ้มกว่าปลูกบนที่ดี
+        if (t.blight > 0.05) { t.blight = Math.max(0, t.blight - K.groveCleansesBlight); cleansed++; }
         if (isWater(t.biome) || t.biome === "MOUNT" || t.biome === "SNOW") return;
         setBiome(s, t, "FOREST");
         t.fert = t.cap; t.burn = 0; t.blight = 0;
         if (t.village) addAwe(t.village, N.aweFromMiracle);
         s.fx.push({ kind: "spark", x: t.x + 0.5, y: t.y + 0.5, t: 0, life: 1.3, color: "#8ed49a" });
       });
-      log("ป่าผุดขึ้นจากดิน"); break;
+      if (cleansed) { s.combos++; log(`ป่าผุดขึ้นและดูดพิษออกจากดิน ${cleansed} ช่อง`); }
+      else log("ป่าผุดขึ้นจากดิน");
+      break;
+    }
 
-    case "bless":
+    case "bless": {
+      const damp = center.wet > K.wetGround;
       around(s, cx, cy, sp.radius, (t) => {
-        t.fert = clamp(t.fert + 0.2, 0, 1);
+        // ดินที่เพิ่งได้ฝนรับพรได้ดีกว่า — ฝนก่อนพร คุ้มกว่าพรเปล่าๆ
+        t.fert = clamp(t.fert + 0.2 + (damp ? K.blessOnWetFert : 0), 0, 1);
         t.blight = Math.max(0, t.blight - 0.35);
         if (t.village) {
           t.village.pop *= 1.14;
@@ -107,7 +116,10 @@ export function castSpell(s: GameState, id: string, cx: number, cy: number,
         }
         s.fx.push({ kind: "spark", x: t.x + 0.5, y: t.y + 0.5, t: 0, life: 1.6, color: "#f0d38a" });
       });
-      log("พรของท่านแผ่ปกคลุม"); break;
+      if (damp) { s.combos++; log("พรของท่านซึมลงดินที่ยังชุ่มน้ำ ผืนนี้จะอุดมกว่าที่อื่น"); }
+      else log("พรของท่านแผ่ปกคลุม");
+      break;
+    }
 
     case "heal": {
       let cured = 0;
@@ -135,18 +147,37 @@ export function castSpell(s: GameState, id: string, cx: number, cy: number,
       break;
     }
 
-    case "bolt":
-      around(s, cx, cy, sp.radius, (t) => {
-        if (!isWater(t.biome)) {
-          t.burn = 1; t.fert *= 0.15;
-          if (t.biome === "FOREST" || t.biome === "LUSH") setBiome(s, t, "ASH");
-        }
-        if (t.village) { t.village.pop *= 0.72; addAwe(t.village, N.aweFromMiracle * 0.8); }
-      });
-      s.fx.push({ kind: "bolt", x: cx + 0.5, y: cy + 0.5, t: 0, life: 0.6 });
-      s.shake = Math.min(9, s.shake + 7);
+    case "bolt": {
+      // ฟ้าผ่าพื้นเปียกไม่ติดไฟ แต่กระแสวิ่งไปตามน้ำได้ไกลกว่า และคนกลัวกว่าเดิม
+      // นี่คือเหตุผลที่จะร่ายฝนก่อนสายฟ้า แทนที่จะกดอันที่ขาดไปเรื่อยๆ
+      const wet = center.wet > K.wetGround;
+      if (wet) {
+        let heard = 0;
+        around(s, cx, cy, sp.radius + K.boltOnWetRadius, (t) => {
+          t.burn = 0;
+          if (t.village) { addAwe(t.village, K.boltOnWetAwe); heard++; }
+        });
+        for (let i = 0; i < 30; i++)
+          s.fx.push({ kind: "spark", x: cx + 0.5 + (rng() - 0.5) * 4,
+                      y: cy + 0.5 + (rng() - 0.5) * 4, t: 0, life: 0.9, color: "#bfe4ff" });
+        s.shake = Math.min(9, s.shake + 5);
+        s.combos++;
+        log(heard ? "สายฟ้าแล่นไปตามพื้นเปียก ทั้งย่านสะดุ้งกลัว" : "สายฟ้าแล่นไปตามพื้นเปียก");
+      } else {
+        around(s, cx, cy, sp.radius, (t) => {
+          if (!isWater(t.biome)) {
+            t.burn = 1; t.fert *= 0.15;
+            if (t.biome === "FOREST" || t.biome === "LUSH") setBiome(s, t, "ASH");
+          }
+          if (t.village) { t.village.pop *= 0.72; addAwe(t.village, N.aweFromMiracle * 0.8); }
+        });
+        s.fx.push({ kind: "bolt", x: cx + 0.5, y: cy + 0.5, t: 0, life: 0.6 });
+        s.shake = Math.min(9, s.shake + 7);
+        log("สายฟ้าฟาดลงกลางแผ่นดิน");
+      }
       s.terrainVersion++;
-      log("สายฟ้าฟาดลงกลางแผ่นดิน"); break;
+      break;
+    }
 
     case "quake":
       around(s, cx, cy, sp.radius, (t) => {

@@ -92,7 +92,14 @@ function targetFor(s: GameState, v: Village, f: Folk, rng: Rng) {
 export function stepFolk(s: GameState, v: Village, rng: Rng): void {
   const want = folkTarget(v);
   while (v.folk.length < want) v.folk.push(makeFolk(v, rng));
-  if (v.folk.length > want) v.folk.length = want;
+  // ตัดคนออกเมื่อประชากรลด — แต่ต้องตัดคนธรรมดาก่อนเสมอ
+  // `putFolk()` ต่อคนที่เพิ่งถูกวางคืนไว้ท้ายรายการ ถ้าตัดจากท้ายดื้อๆ
+  // คนที่พระเจ้าเพิ่งอุ้มกลับบ้านมาอย่างระมัดระวัง จะเป็นคนแรกที่หายไป
+  while (v.folk.length > want) {
+    let drop = -1;
+    for (let i = v.folk.length - 1; i >= 0; i--) if (!v.folk[i].priest) { drop = i; break; }
+    v.folk.splice(drop >= 0 ? drop : v.folk.length - 1, 1);
+  }
 
   for (let i = 0; i < v.folk.length; i++) {
     const f = v.folk[i];
