@@ -1,12 +1,14 @@
 import "./style.css";
 import { FixedLoop } from "./core/loop";
 import { createGame, stepTick, stepEffects, castSpell, teach, command,
-         snapshot, restore, saveLooksValid, totalPop,
+         snapshot, restore, saveLooksValid, totalPop, computeReign, placeCreature,
          SPELLS, type Game, type CommandId } from "./sim/index";
 import { World3D } from "./render/world3d";
-import { Terrain3D } from "./render/terrain3d";
+import { Terrain3D, groundY } from "./render/terrain3d";
 import { Creature3D, Villages3D } from "./render/actors3d";
 import { Villagers3D } from "./render/villagers3d";
+import { Hand3D } from "./render/hand3d";
+import { unlock as unlockAudio, sfx, setMuted, isMuted } from "./core/audio";
 import { Fx3D } from "./render/fx3d";
 import { Hud } from "./ui/hud";
 import { clearSlot, readSlot, slotMeta, writeSlot, SLOTS, type SlotId } from "./core/storage";
@@ -19,6 +21,8 @@ const { W, H } = balance.world;
 let game: Game = createGame(Date.now() & 0xffffff);
 let armed: string | null = null;
 let armedCmd: CommandId | null = null;
+/** โหมด "ยกสัตว์ไปวาง" — ไม่ใช่คำสั่งให้มันเดินเอง แต่คือมือหยิบมันไปวางจริงๆ */
+let lifting = false;
 let hover: { x: number; y: number } | null = null;
 let selected: { x: number; y: number } | null = null;
 
@@ -26,12 +30,13 @@ const world = new World3D(cv);
 let terrain = new Terrain3D(game.state);
 const villages = new Villages3D();
 const villagers = new Villagers3D();
+const hand = new Hand3D();
 const creature = new Creature3D();
 const fx = new Fx3D();
-world.scene.add(terrain.group, villages.group, villagers.group, creature.root, fx.group);
+world.scene.add(terrain.group, villages.group, villagers.group, creature.root, fx.group, hand.root);
 
 const hud = new Hud((id) => {
-  armedCmd = null; hud.setCommand(null);
+  armedCmd = null; lifting = false; hud.setCommand(null);
   armed = armed === id ? null : id;
   hud.setArmed(armed);
   const sp = SPELLS.find((s) => s.id === id)!;
@@ -59,6 +64,7 @@ const localPos = (e: PointerEvent) => {
 cv.addEventListener("pointerdown", (e) => {
   // บาง pointer (เช่นที่ถูกยิงจากเครื่องมืออัตโนมัติ) ทำให้ setPointerCapture โยน error
   // ถ้าไม่ดักไว้ pointerdown จะตายกลางคันและการแตะครั้งนั้นหายไปทั้งครั้ง
+  unlockAudio();
   try { cv.setPointerCapture(e.pointerId); } catch { /* ไม่จำเป็นต้องจับ pointer ก็เล่นได้ */ }
   const p = localPos(e);
   pointers.set(e.pointerId, p);
@@ -89,14 +95,40 @@ cv.addEventListener("pointermove", (e) => {
   hover = world.pick(p.x, p.y, [terrain.ground]);
 });
 
+/** แตะสองครั้งที่ช่องเดิม = ร่อนลงไปดูใกล้ๆ ตรงนั้น
+ *  ใช้ท่าเดิมที่มีอยู่แล้ว ไม่ต้องสอนท่าใหม่ และทำงานได้ทั้งบนแมคและ iPad */
+let lastTapAt = 0, lastTapPos = { x: -99, y: -99 };
+const DOUBLE_TAP_MS = 320, DOUBLE_TAP_PX = 28;
+
 cv.addEventListener("pointerup", (e) => {
   const wasSingle = pointers.size === 1;
   const p = localPos(e);
   pointers.delete(e.pointerId);
   if (pointers.size < 2) pinchDist = 0;
   if (!wasSingle || dragged) return;
+
+  const now = performance.now();
+  const near = Math.hypot(p.x - lastTapPos.x, p.y - lastTapPos.y) < DOUBLE_TAP_PX;
+  if (now - lastTapAt < DOUBLE_TAP_MS && near) {
+    lastTapAt = 0;
+    const hit = world.pick(p.x, p.y, [terrain.ground]);
+    if (hit) { swoopTo(hit.x, hit.y); return; }
+  }
+  lastTapAt = now; lastTapPos = p;
   onTap(p.x, p.y);
 });
+
+function swoopTo(tx: number, ty: number) {
+  world.focusOn(tx + 0.5, groundY(game.state, tx + 0.5, ty + 0.5), ty + 0.5);
+  hud.say("แตะสองครั้งอีกที หรือกดถอยออก เพื่อกลับไปมองทั้งเกาะ");
+  renderZoomOut();
+}
+
+/** ปุ่มถอยออกโผล่มาเฉพาะตอนที่ลงไปใกล้แล้ว ไม่งั้นมันเกะกะจอเปล่าๆ */
+function renderZoomOut() {
+  const el = document.getElementById("zoomOut");
+  if (el) el.classList.toggle("hidden", !world.closeUp);
+}
 cv.addEventListener("pointercancel", (e) => pointers.delete(e.pointerId));
 cv.addEventListener("pointerleave", () => (hover = null));
 cv.addEventListener("wheel", (e) => {
@@ -112,8 +144,15 @@ function onTap(sx: number, sy: number) {
 
   if (armed) {
     const before = s.terrainVersion;
-    castSpell(s, armed, hit.x, hit.y, game.rng, log);
+    const ok = castSpell(s, armed, hit.x, hit.y, game.rng, log);
+    if (ok) (sfx as Record<string, () => void>)[armed]?.();
+    else sfx.deny();
     if (s.terrainVersion !== before) rebuildTerrain();
+    return;
+  }
+  if (lifting) {
+    if (placeCreature(s, hit.x, hit.y, log)) sfx.place(); else sfx.deny();
+    lifting = false; hud.setCommand(null);
     return;
   }
   if (armedCmd) {
@@ -129,8 +168,19 @@ function onTap(sx: number, sy: number) {
 
 // ───────────────────────── ปุ่ม ─────────────────────────
 
-document.getElementById("bPraise")!.onclick = () => teach(game.state, 1, game.rng, (m) => hud.say(m));
-document.getElementById("bScold")!.onclick = () => teach(game.state, -1, game.rng, (m) => hud.say(m));
+document.getElementById("zoomOut")!.onclick = () => { world.resetView(); renderZoomOut(); };
+const bSound = document.getElementById("bSound")!;
+bSound.onclick = () => {
+  unlockAudio();
+  setMuted(!isMuted());
+  bSound.textContent = isMuted() ? "เสียงปิด" : "เสียงเปิด";
+};
+document.getElementById("bPraise")!.onclick = () => {
+  if (teach(game.state, 1, game.rng, (m) => hud.say(m))) sfx.praise();
+};
+document.getElementById("bScold")!.onclick = () => {
+  if (teach(game.state, -1, game.rng, (m) => hud.say(m))) sfx.scold();
+};
 
 function armCommand(kind: CommandId) {
   armed = null; hud.setArmed(null);
@@ -141,6 +191,13 @@ function armCommand(kind: CommandId) {
 document.getElementById("cStay")!.onclick = () => armCommand("stay");
 document.getElementById("cEat")!.onclick = () => armCommand("eatHere");
 document.getElementById("cGo")!.onclick = () => armCommand("goTo");
+document.getElementById("cLift")!.onclick = () => {
+  lifting = !lifting;
+  armed = null; armedCmd = null; hud.setArmed(null);
+  hud.setCommand(lifting ? "lift" : null);
+  hud.say(lifting ? "แตะบนเกาะเพื่อวางมันลงตรงนั้น" : "ยกเลิก");
+  if (lifting) sfx.lift();
+};
 
 document.getElementById("bGen")!.onclick = () => {
   document.getElementById("inspect")!.classList.add("hidden");
@@ -183,7 +240,7 @@ function loadFrom(slot: SlotId) {
   const r = readSlot(slot);
   if (!r || !saveLooksValid(r.state, W * H)) { hud.say("ช่องนี้ว่าง หรือเซฟมาจากเกมคนละรุ่น"); return; }
   game = restore(r.state);
-  armed = null; armedCmd = null; selected = null;
+  armed = null; armedCmd = null; lifting = false; selected = null;
   hud.setArmed(null); hud.setCommand(null);
   hud.buildSpells(game.state.align, null);
   rebuildTerrain();
@@ -244,21 +301,48 @@ const loop = new FixedLoop(
     if (Math.abs(r.width - world.width) > 1 || Math.abs(r.height - world.height) > 1) world.resize();
 
     world.shake = Math.max(world.shake, s.shake);
+    // เวลาบนเกาะเดินตาม tick ไม่ใช่นาฬิกาจริง กด 2x/4x แล้วพระอาทิตย์ต้องเคลื่อนเร็วขึ้นด้วย
+    world.setTimeOfDay(((s.tick % balance.time.ticksPerDay) / balance.time.ticksPerDay + 0.18) % 1);
     terrain.update(s, now);
-    villages.update(s, now);
+    villages.update(s, now, world.daylight);
     villagers.update(s, dt);
     creature.update(s, s.creature, now);
     const sp = armed ? SPELLS.find((x) => x.id === armed)! : null;
     fx.setCursor(s, hover ?? selected, sp ? sp.radius : null, sp?.dark ?? false);
+    hand.setGrip(!!armed || lifting);
+    hand.setDark(sp?.dark ?? false);
+    hand.update(s, hover ?? selected, dt, now, lifting);
     fx.update(s, now);
 
-    world.update(dt);
+    world.update(dt, (x, z) => groundY(s, x, z));
     world.render();
     hud.update(s);
+    renderZoomOut();
+    if (s.won && !reignShown) { reignShown = true; sfx.win(); showReign(); }
     if (selected && !document.getElementById("inspect")!.classList.contains("hidden")
         && s.tick % 8 === 0) hud.drawInspect(s, selected.x, selected.y);
   },
 );
+
+// ───────────────────────── ฉากจบ ─────────────────────────
+
+/** โผล่ครั้งเดียวตอนถึงเป้าหมาย เกมไม่หยุด เล่นต่อได้ — นี่คือ "รัชสมัยของท่านเป็นแบบไหน"
+ *  ไม่ใช่ "ท่านชนะแล้ว" เพราะธรรมกับอธรรมไม่มีฝั่งไหนถูก */
+let reignShown = false;
+function showReign() {
+  const r = computeReign(game.state);
+  const el = document.getElementById("reign")!;
+  el.classList.remove("hidden");
+  el.innerHTML = `<div class="rwrap">
+    <b>${r.title}</b>
+    <em>${r.tone}</em>
+    <ul>${r.lines.map((l) => `<li>${l}</li>`).join("")}</ul>
+    <div class="sub">ปีที่ ${r.years} · ผู้ศรัทธา ${r.believers} · หมู่บ้าน ${r.villages} ·
+      สัตว์รุ่นที่ ${r.generation} · คะแนนรัชสมัย ${r.score}</div>
+    <button id="reignOk">เล่นต่อ</button>
+  </div>`;
+  document.getElementById("reignOk")!.onclick = () => el.classList.add("hidden");
+}
 
 function showFirstHint() {
   const el = document.getElementById("firsthint")!;
@@ -281,7 +365,7 @@ function showFirstHint() {
 
 function newGame() {
   game = createGame(Date.now() & 0xffffff);
-  armed = null; armedCmd = null; selected = null; lastAutosave = 0;
+  armed = null; armedCmd = null; lifting = false; selected = null; lastAutosave = 0;
   rebuildTerrain();
   world.resize();
   hud.buildSpells(game.state.align, null);

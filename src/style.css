@@ -145,3 +145,23 @@ canvas:active{cursor:grabbing}
   #ticker{bottom:14px}
 }
 @media (max-width:420px){ .sigil{width:54px} .stat b{font-size:17px} }
+
+/* ปุ่มถอยออกจากมุมใกล้ — โผล่เฉพาะตอนกล้องลงไปอยู่ใกล้พื้นแล้ว */
+#zoomOut{position:absolute;left:50%;transform:translateX(-50%);bottom:14px;z-index:4;
+  background:rgba(10,22,28,.82);color:var(--parch);border:1px solid rgba(240,211,138,.4);
+  border-radius:999px;padding:8px 18px;font-family:inherit;font-size:13px;cursor:pointer;
+  backdrop-filter:blur(8px)}
+#zoomOut:active{background:rgba(240,211,138,.18)}
+
+/* ฉากจบ — โผล่ครั้งเดียวตอนถึงเป้าหมาย เกมไม่หยุด */
+#reign{position:absolute;inset:0;z-index:12;display:grid;place-items:center;
+  background:rgba(7,15,20,.88);backdrop-filter:blur(6px);padding:24px}
+.rwrap{max-width:30em;text-align:center;color:var(--parch)}
+.rwrap b{display:block;font-family:"Trirong",serif;font-size:26px;letter-spacing:.5px;
+  color:#f0d38a;margin-bottom:8px}
+.rwrap em{display:block;font-style:normal;font-size:15px;opacity:.85;line-height:1.8;margin-bottom:16px}
+.rwrap ul{text-align:left;margin:0 0 16px;padding-left:1.1em;line-height:2;font-size:14px;opacity:.92}
+.rwrap .sub{font-size:12px;opacity:.6;line-height:1.9;margin-bottom:18px}
+.rwrap button{background:none;color:#f0d38a;border:1px solid rgba(240,211,138,.45);
+  border-radius:999px;padding:10px 26px;font-family:inherit;font-size:14px;cursor:pointer}
+.rwrap button:active{background:rgba(240,211,138,.16)}

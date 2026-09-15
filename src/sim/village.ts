@@ -55,6 +55,21 @@ function bestSpot(s: GameState, cx: number, cy: number, rad: number, rng: Rng) {
 
 export function addAwe(v: Village, amount: number) { v.awe = clamp(v.awe + amount, 0, 1); }
 
+/** รัศมีที่หมู่บ้านนี้แผ่ความศรัทธาออกไป = เขตที่พระเจ้าลงมือได้
+ *  ยิ่งคนเชื่อมากและมีคนมาก เขตยิ่งกว้าง — อำนาจจึงมาจากการดูแลคน ไม่ใช่มีมาแต่แรก */
+export const influenceOf = (v: Village) =>
+  Math.min(balance.influence.max,
+    balance.influence.base +
+    balance.influence.perBelief * v.belief +
+    balance.influence.perPopRoot * Math.sqrt(Math.max(0, v.pop)));
+
+/** จุดนี้อยู่ในเขตที่ผู้คนศรัทธาท่านไหม */
+export function inInfluence(s: GameState, x: number, y: number): boolean {
+  for (const v of s.villages)
+    if (Math.hypot(v.x - x, v.y - y) <= influenceOf(v)) return true;
+  return false;
+}
+
 /** เพดานศรัทธาโตตามจำนวนผู้ศรัทธา ไม่ใช่ตามยุค */
 export const faithCap = (s: GameState) =>
   balance.faith.capBase + balance.faith.capPerBeliever * totalPop(s);

@@ -1,7 +1,8 @@
 import { clamp, type Rng } from "../core/rng";
 import { isWater } from "./biomes";
 import { setBiome, tileAt } from "./world";
-import { addAwe, foundVillage, maxVillages } from "./village";
+import { addAwe, foundVillage, inInfluence, maxVillages } from "./village";
+import { watchMiracle } from "./creature";
 import type { GameState, Tile } from "./types";
 import balance from "../../data/balance.json";
 
@@ -52,6 +53,10 @@ export function castSpell(s: GameState, id: string, cx: number, cy: number,
   if (s.faith < cost) { log("ศรัทธาไม่พอ"); return false; }
   const center = tileAt(s.tiles, cx, cy);
   if (!center) return false;
+
+  // อำนาจไปได้ไกลแค่ที่มีคนศรัทธาอยู่ เดิมร่ายที่ไหนก็ได้ทั้งเกาะตั้งแต่วินาทีแรก
+  // ชั้นยุทธศาสตร์ทั้งชั้นของ B&W อยู่ตรงนี้ — อยากไปถึงมุมนั้น ต้องเลี้ยงคนตรงนี้ให้โตก่อน
+  if (!inInfluence(s, cx, cy)) { log("ไกลเกินเขตที่ผู้คนศรัทธาท่าน"); return false; }
 
   // ตรวจเงื่อนไขก่อนหักค่าใช้จ่าย เพื่อไม่ให้ผู้เล่นเสียศรัทธาฟรี
   if (sp.id === "grove" && isWater(center.biome)) { log("ปลูกป่ากลางน้ำไม่ได้"); return false; }
@@ -155,6 +160,8 @@ export function castSpell(s: GameState, id: string, cx: number, cy: number,
       s.terrainVersion++;
       log("แผ่นดินแยกด้วยพิโรธของท่าน"); break;
   }
+
+  watchMiracle(s, sp.dark, cx, cy, log);
   return true;
 }
 

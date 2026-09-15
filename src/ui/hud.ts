@@ -1,6 +1,8 @@
 import { ACTION_NAME, CREATURE_NEED_NAME, GENE_NAME, NEED_NAME, SPELLS, spellCost, spellFor,
          bodySize, maxAge, totalPop, faithCap, neediestVillage, tileAt, BIOMES, disasterLabel,
+         goalBelievers,
          type GameState, type NeedId, type Village } from "../sim/index";
+import { sfx } from "../core/audio";
 
 const SIGIL: Record<string, string> = {
   rain:  '<path d="M5 10a4 4 0 018-1 3 3 0 011 5.8"/><path d="M8 17l-1 3M12 17l-1 3M16 17l-1 3"/>',
@@ -46,7 +48,8 @@ export class Hud {
     }
   }
   setCommand(cmd: string | null) {
-    for (const [id, key] of [["cStay", "stay"], ["cEat", "eatHere"], ["cGo", "goTo"]] as const) {
+    for (const [id, key] of [["cStay", "stay"], ["cEat", "eatHere"], ["cGo", "goTo"],
+                             ["cLift", "lift"]] as const) {
       const b = document.getElementById(id) as HTMLElement | null;
       if (b) b.dataset.on = cmd === key ? "1" : "0";
     }
@@ -67,13 +70,19 @@ export class Hud {
     const cap = faithCap(s);
     $("sFaith").textContent = String(Math.floor(s.faith));
     $("sFaithCap").textContent = `/ ${Math.floor(cap)} ศรัทธา`;
+    // เดิมเลขนี้บอกแค่ "มีคนกี่คน" ไม่ได้บอกว่ากี่คนถึงจะพอ
     $("sPop").textContent = String(Math.round(totalPop(s)));
+    $("sGoal").textContent = s.won ? "· ถึงเป้าแล้ว" : `/ ${goalBelievers()}`;
     $("sYear").textContent = String(s.year);
     ($("alignPin") as HTMLElement).style.left = ((s.align + 1) / 2) * 100 + "%";
 
     for (const d of s.disasters) {
       const key = `${d.kind}@${d.x},${d.y}`;
-      if (!this.seenDisasters.has(key)) { this.seenDisasters.add(key); this.alert(disasterLabel(d.kind), "bad"); }
+      if (!this.seenDisasters.has(key)) {
+        this.seenDisasters.add(key);
+        this.alert(disasterLabel(d.kind), "bad");
+        sfx.disaster();
+      }
     }
     if (this.seenDisasters.size > 40) this.seenDisasters.clear();
 

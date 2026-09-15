@@ -18,10 +18,11 @@
 <div id="app">
   <div id="hud">
     <div class="stat faith"><b id="sFaith">0</b><span id="sFaithCap">/0</span></div>
-    <div class="stat"><b id="sPop">0</b><span>ผู้ศรัทธา</span></div>
+    <div class="stat"><b id="sPop">0</b><span id="sGoal">/ 0</span><span>ผู้ศรัทธา</span></div>
     <div class="stat"><b id="sYear">0</b><span>ปี</span></div>
     <div class="grow"></div>
     <button class="iconbtn" id="bSpeed">1×</button>
+    <button class="iconbtn" id="bSound">เสียงเปิด</button>
     <button class="iconbtn" id="bGen">สัตว์</button>
     <button class="iconbtn" id="bMenu">เมนู</button>
   </div>
@@ -30,11 +31,13 @@
     <canvas id="cv"></canvas>
     <div id="guide" class="hidden"></div>
     <div id="ticker"></div>
+    <button id="zoomOut" class="hidden">ถอยออก</button>
     <div id="genome" class="hidden"></div>
     <div id="inspect" class="hidden"></div>
     <div id="menu" class="hidden"></div>
     <div id="alerts"></div>
     <div id="firsthint" class="hidden"></div>
+    <div id="reign" class="hidden"></div>
   </div>
   <div id="pet">
     <div id="petFace">?</div>
@@ -50,6 +53,7 @@
       <button class="cmd" id="cStay" title="ให้อยู่ตรงจุดที่แตะ">อยู่นี่</button>
       <button class="cmd" id="cEat" title="ให้ไปหากินตรงจุดที่แตะ">กินตรงนี้</button>
       <button class="cmd" id="cGo" title="เรียกไปยังจุดที่แตะ">ไปตรงนั้น</button>
+      <button class="cmd" id="cLift" title="ยกมันขึ้นมาแล้ววางลงตรงจุดที่แตะ">ยกไปวาง</button>
     </div>
     <button class="teach good" id="bPraise">✦</button>
     <button class="teach bad" id="bScold">✕</button>

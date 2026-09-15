@@ -87,6 +87,11 @@ npm run check     # tsc --noEmit
   (ข้อสังเกตที่ยังไม่ได้แก้: `workRadius` มีแค่ 2 แต่หมู่บ้านกินรัศมี ~1.7 — มันเกือบกลืนไร่ตัวเอง)
 - **ชาวบ้านใช้ `dt` ไม่ใช่ `performance.now()`** `dt` จาก FixedLoop คูณความเร็วเกมมาแล้ว
   ถ้าใช้เวลานาฬิกาจริง กด 4× โลกจะเดินเร็วขึ้นแต่คนยังเดินเท่าเดิม
+- **เพดานศรัทธาหดลงได้เมื่อประชากรลด** ศรัทธาที่สะสมไว้จึงค้างเหนือเพดานได้ถ้าไม่บังคับ
+  ตอนนี้ `stepTick()` ตัดที่เพดานให้ท้าย tick **ที่เดียว** ทางอื่นที่บวกศรัทธาไม่ต้อง clamp เอง
+  (เคยไล่แก้ผิดจุดมาแล้ว เพราะคิดว่าเป็นเพราะการร่ายรำบูชาบวกเกิน)
+- **เสียงต้องปลดล็อกจาก event ของผู้ใช้จริง** `unlockAudio()` ถูกเรียกใน `pointerdown`
+  ถ้าเรียกตอนโหลดหน้า เบราว์เซอร์จะบล็อกแล้วเสียงจะเงียบทั้งเกมโดยไม่มี error
 - **`setPointerCapture` โยน error ได้กับ pointer บางชนิด** ถ้าไม่ดัก try/catch ไว้
   `pointerdown` จะตายกลางคันและการแตะครั้งนั้นหายไปทั้งครั้ง
 - **ตรวจฉาก 3 มิติจาก console ได้** ตอน dev มี `window.__genesis` = { game, world, villages, creature, terrain(), state() }
@@ -94,11 +99,12 @@ npm run check     # tsc --noEmit
 ## แผนที่ไฟล์
 
 ```
-src/sim/      ตรรกะเกมล้วน ไม่มี DOM — world, village, creature, miracle, disaster, serialize
+src/sim/      ตรรกะเกมล้วน ไม่มี DOM — world, village, creature, miracle, disaster, reign, serialize
 src/render/   world3d.ts (ฉาก แสง กล้องโคจร raycast) · terrain3d.ts (เกาะ mesh + ต้นไม้ + ทะเล)
               actors3d.ts (หมู่บ้าน + สัตว์) · villagers3d.ts (ชาวบ้านที่เดินได้)
-              fx3d.ts (อนุภาค + มือของพระเจ้า)  [Three.js]
-src/core/     loop.ts (fixed timestep), rng.ts (mulberry32 + state), storage.ts (localStorage)
+              fx3d.ts (อนุภาค + วงเป้า) · hand3d.ts (มือของพระเจ้า)  [Three.js]
+src/core/     loop.ts (fixed timestep) · rng.ts (mulberry32 + state) · storage.ts (localStorage)
+              audio.ts (เสียงสังเคราะห์สด ไม่มีไฟล์เสียง)
 src/ui/       hud.ts — แถบบน ปุ่มคาถา แผงสัตว์ แผงตรวจสอบช่อง และ "แถบบอกว่าควรทำอะไร"
 src/test/     headless.ts — `npm run sim`
 ```

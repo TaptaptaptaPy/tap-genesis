@@ -185,7 +185,7 @@ function resolveAction(s: GameState, c: Creature, rng: Rng, log: (m: string) => 
   } else if (a === "worship" && v && Math.hypot(v.x - c.x, v.y - c.y) < 1.8) {
     v.belief = clamp(v.belief + 0.10, 0, 1);
     addAwe(v, 0.04);
-    s.faith += 5 + 9 * g.intel;
+    s.faith += balance.faith.worshipBase + balance.faith.worshipPerIntel * g.intel;
     s.align = clamp(s.align + balance.align.creatureWorship, -1, 1);
     c.energy = clamp(c.energy - 0.04, 0, 1); c.served++;
     burst(s, v.x, v.y, "#d9a437", rng);
@@ -220,6 +220,38 @@ export function teach(s: GameState, sign: 1 | -1, rng: Rng, log: (m: string) => 
   c.mood = sign; c.fbTimer = 0;
   burst(s, c.x, c.y, sign > 0 ? "#d9a437" : "#9a3030", rng);
   log(sign > 0 ? `ท่านพอใจที่มัน${ACTION_NAME[k]}` : `ท่านลงโทษที่มัน${ACTION_NAME[k]}`);
+  return true;
+}
+
+/** สัตว์ที่อยู่ใกล้พอจะเห็นว่าท่านเพิ่งทำอะไร แล้วเลียนแบบ
+ *  นี่คือการเรียนรู้แบบ Black & White ของจริง — เดิมมันเรียนได้จากคำชม/ดุหลังทำเองเท่านั้น
+ *  แปลว่าท่านสอนมันได้แค่ "หลังจาก" มันเลือกเอง ไม่ใช่สอนด้วยการทำให้ดู */
+export function watchMiracle(s: GameState, dark: boolean, cx: number, cy: number,
+                             log: (m: string) => void): boolean {
+  const c = s.creature;
+  if (!c.alive) return false;
+  const I = balance.imitate;
+  if (Math.hypot(c.x - cx, c.y - cy) > I.watchRadius) return false;
+  const lr = I.learnRate;
+  const nudge = (k: keyof Weights, amt: number) => { c.w[k] = clamp(c.w[k] + amt, 0.05, 3); };
+  if (dark) { nudge("raid", lr); nudge("help", -lr * 0.5); }
+  else { nudge("help", lr); nudge("worship", lr * 0.5); nudge("raid", -lr * 0.5); }
+  c.mem[c.lastTile] = c.mem[c.lastTile] ?? 0;
+  log(dark ? "สัตว์ของท่านเฝ้าดูสิ่งที่ท่านทำ" : "สัตว์ของท่านเฝ้าดูและจดจำ");
+  return true;
+}
+
+/** พระเจ้ายกสัตว์ขึ้นมาแล้ววางลงที่อื่น — ไม่ใช่การ "สั่งให้เดินไป" แต่คือการหยิบมันไปวาง
+ *  ใน B&W นี่คือสิ่งที่มือทำได้ตั้งแต่นาทีแรก และเป็นวิธีสอนที่ตรงที่สุดว่า "ไปอยู่ตรงนี้" */
+export function placeCreature(s: GameState, x: number, y: number, log: (m: string) => void): boolean {
+  const c = s.creature;
+  if (!c.alive) { log("ยังไม่มีสัตว์ให้ยก"); return false; }
+  const t = tileAt(s.tiles, x, y);
+  if (!t || isWater(t.biome)) { log("วางลงกลางน้ำไม่ได้"); return false; }
+  c.x = x + 0.5; c.y = y + 0.5;
+  c.cmd = null; c.act = null; c.tgt = null;
+  c.idleTicks = 0;
+  log("ท่านยกมันไปวางไว้ที่ใหม่");
   return true;
 }
 

@@ -8,7 +8,8 @@
  *  ไม่ใช่เพราะสมดุลพัง — ตัวเลขที่อ่านผิดได้แบบนั้นแย่กว่าไม่มีตัวเลขเลย */
 import { createGame, stepTick, stepEffects, totalPop, maxVillages, snapshot, restore,
          tileAt, bodySize, faithCap, saveLooksValid, castSpell, spellCost, spellFor,
-         SPELLS, teach, neediestVillage, isWater, GENE_NAME, NEED_NAME,
+         SPELLS, teach, neediestVillage, isWater, inInfluence, computeReign, goalBelievers,
+         GENE_NAME, NEED_NAME,
          type Game, type GameState, type GeneId, type Genes, type NeedId, type Village }
        from "../sim/index";
 import balance from "../../data/balance.json";
@@ -56,6 +57,8 @@ function emptySpot(s: GameState) {
   let best = null, bv = 0;
   for (const t of s.tiles) {
     if (isWater(t.biome) || t.village) continue;
+    // ต้องอยู่ในเขตที่คนศรัทธาท่านด้วย ผู้เล่นจริงก็ร่ายนอกเขตไม่ได้เหมือนกัน
+    if (!inInfluence(s, t.x, t.y)) continue;
     if (s.villages.some((v) => Math.hypot(v.x - t.x, v.y - t.y) < minD)) continue;
     if (t.fert > bv) { bv = t.fert; best = t; }
   }
@@ -145,6 +148,7 @@ interface Outcome {
   needs: Record<NeedId, number>; askPct: number;
   gen: number; bond: number; size: number; fit: number;
   dead: boolean; starved: boolean; year: number; overflow: number;
+  won: boolean; reign: string;
   drift: string; disasters: string; god: GodStats;
 }
 
@@ -183,6 +187,7 @@ function runWorld(seed: number, persona: Persona): Outcome {
     needs, askPct: (askTicks / ticks) * 100,
     gen: s.creature.gen, bond: s.creature.bond, size: bodySize(s.creature),
     fit: s.best?.fit ?? 0, dead: s.dead, overflow,
+    won: s.won, reign: computeReign(s).title,
     starved: s.villages.some((v) => v.needs.food < 0.5), year: s.year,
     drift: GENES.map((k) => `${GENE_NAME[k]} ${gen0[k].toFixed(2)}→${s.creature.genes[k].toFixed(2)}`).join("  "),
     disasters: Object.entries(seen).map(([k, v]) => `${k}×${v}`).join(" ") || "ไม่มี",
@@ -200,7 +205,8 @@ function report(label: string, o: Outcome) {
   const sign = o.align >= 0 ? "+" : "";
   console.log(`  ${pad} ประชากร ${o.pop.toFixed(0).padStart(3)} (เคยถึง ${o.peak.toFixed(0).padStart(3)})` +
               ` · หมู่บ้าน ${o.villages}/${o.cap} · ศรัทธา ${o.faith.toFixed(0)}/${o.faithCap.toFixed(0)}` +
-              ` · ธรรม ${sign}${o.align.toFixed(2)}${o.dead ? "  *** ล่มสลาย ***" : ""}`);
+              ` · ธรรม ${sign}${o.align.toFixed(2)}` +
+              `${o.dead ? "  *** ล่มสลาย ***" : o.won ? "  ★ ถึงเป้าหมาย" : ""}`);
   console.log(`             ${NEEDS.map((k) => `${NEED_NAME[k]} ${(o.needs[k] * 100).toFixed(0)}%`).join("  ")}` +
               ` · มีคำขอค้างอยู่ ${o.askPct.toFixed(0)}% ของเวลา`);
   const spells = castList(o.god);
@@ -293,6 +299,12 @@ const worstOverflow = Math.max(...(["none", "kind", "wrath"] as Persona[])
 if (worstOverflow > 0.5)
   console.log(`ศรัทธาทะลุเพดานสูงสุด ${worstOverflow.toFixed(0)} หน่วย ← เพดานรั่ว`);
 
+const wonOf = (p: Persona) => all[p].filter((o) => o.won).length;
+const bestPop = Math.max(...all.kind.map((o) => o.peak));
+console.log(`เป้าหมาย ${goalBelievers()} ผู้ศรัทธา — ถึงแล้ว: เมตตา ${wonOf("kind")}/${RUNS}` +
+            ` · ปล่อยทิ้ง ${wonOf("none")}/${RUNS} · ประชากรสูงสุดที่เมตตาเคยทำได้ ${bestPop.toFixed(0)}`);
+console.log(`รัชสมัยที่ได้: ${[...new Set(all.kind.map((o) => o.reign))].join(" · ")}`);
+
 const missing = SPELLS.filter((sp) => !spellsUsed.has(sp.id));
 console.log(`คาถาที่เทสต์ได้ใช้จริง ${SPELLS.length - missing.length}/${SPELLS.length}` +
             (missing.length ? ` — ยังไม่เคยแตะ: ${missing.map((sp) => sp.name).join(" ")}` : ""));
@@ -309,5 +321,10 @@ if (popOf("kind") <= popOf("none"))
 if (popOf("wrath") >= popOf("none"))
   console.log("เตือน: คาถาดำไม่มีผลกับโลก");
 if (missing.length) console.log("เตือน: มีคาถาที่ไม่มีเทสต์ไหนแตะเลย");
+// 2 ใน 8 โลกถึงเป้าเป็นเรื่องปกติ ถ้าจำลองแค่ 3 โลกแล้วไม่ถึงเลยก็ยังไม่ได้แปลว่าเป้าพัง
+if (RUNS >= 6 && wonOf("kind") === 0)
+  console.log("เตือน: ไม่มีโลกไหนถึงเป้าหมายเลย เป้าอาจสูงเกินไปสำหรับความยาวที่จำลอง");
+if (wonOf("none") > 0)
+  console.log("เตือน: โลกที่ไม่มีเทพก็ถึงเป้าหมายได้ เป้านี้ไม่ได้วัดอะไรเลย");
 if (worstOverflow > 0.5)
   console.log("เตือน: ศรัทธาทะลุ faithCap() ได้ — การร่ายรำบูชาของสัตว์ใน creature.ts บวกศรัทธาโดยไม่ clamp");

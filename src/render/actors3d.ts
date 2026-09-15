@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { bodySize } from "../sim/creature";
+import { influenceOf } from "../sim/village";
 import type { Creature, GameState, NeedId, Village } from "../sim/types";
 import { groundY } from "./terrain3d";
 
@@ -28,7 +29,27 @@ function askTexture(need: NeedId): THREE.Texture {
 
 interface VillageParts {
   root: THREE.Group; huts: THREE.Group; ring: THREE.Mesh; ask: THREE.Sprite;
+  fire: THREE.Mesh; glow: THREE.Sprite; inf: THREE.Mesh;
 }
+
+/** แสงกองไฟตอนกลางคืน — ใช้ sprite ไล่สีแทน PointLight จริง
+ *  เพราะหมู่บ้านมีได้ถึง 6 แห่ง ไฟจริง 6 ดวงแพงเกินไปบน iPad */
+function glowTexture(): THREE.Texture {
+  const cv = document.createElement("canvas");
+  cv.width = cv.height = 128;
+  const g = cv.getContext("2d")!;
+  const grad = g.createRadialGradient(64, 64, 2, 64, 64, 62);
+  grad.addColorStop(0, "rgba(255,196,110,.95)");
+  grad.addColorStop(0.45, "rgba(226,140,60,.35)");
+  grad.addColorStop(1, "rgba(226,140,60,0)");
+  g.fillStyle = grad;
+  g.fillRect(0, 0, 128, 128);
+  const tex = new THREE.CanvasTexture(cv);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+const GLOW_TEX = /* @__PURE__ */ (() => { let t: THREE.Texture | null = null;
+  return () => (t ??= glowTexture()); })();
 
 const HUT_R = 0.42;
 const HUT_GEO = new THREE.ConeGeometry(HUT_R, 0.8, 6);
@@ -55,13 +76,13 @@ export class Villages3D {
     this.askTex = { food: askTexture("food"), wood: askTexture("wood"), shelter: askTexture("shelter") };
   }
 
-  update(s: GameState, time: number) {
+  update(s: GameState, time: number, daylight = 1) {
     const alive = new Set<number>();
     for (const v of s.villages) {
       alive.add(v.id);
       let e = this.byId.get(v.id);
       if (!e) { e = this.build(s, v); this.byId.set(v.id, e); this.group.add(e.root); }
-      this.refresh(s, v, e, time);
+      this.refresh(s, v, e, time, daylight);
     }
     for (const [id, e] of this.byId)
       if (!alive.has(id)) { this.group.remove(e.root); this.byId.delete(id); }
@@ -105,10 +126,32 @@ export class Villages3D {
     ask.visible = false;
     root.add(ask);
 
-    return { root, huts, ring, ask };
+    const fire = new THREE.Mesh(
+      new THREE.SphereGeometry(0.16, 8, 6),
+      new THREE.MeshBasicMaterial({ color: 0xffb45c, transparent: true }));
+    fire.position.y = 0.16;
+    root.add(fire);
+
+    const glow = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: GLOW_TEX(), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
+    glow.scale.set(3.2, 3.2, 1);
+    glow.position.y = 0.3;
+    root.add(glow);
+
+    // ขอบเขตที่ร่ายคาถาได้ — ถ้าไม่วาดไว้ ข้อความ "ไกลเกินเขตที่ผู้คนศรัทธาท่าน" จะไม่มีทางเข้าใจได้
+    // ใช้วงรัศมี 1 แล้วค่อยขยายตามค่าจริง จะได้ไม่ต้องสร้าง geometry ใหม่ทุกเฟรม
+    const inf = new THREE.Mesh(
+      new THREE.RingGeometry(0.965, 1, 72),
+      new THREE.MeshBasicMaterial({ color: 0xf0d38a, transparent: true, opacity: 0.16,
+                                    side: THREE.DoubleSide, depthWrite: false }));
+    inf.rotation.x = -Math.PI / 2;
+    inf.position.y = 0.06;
+    root.add(inf);
+
+    return { root, huts, ring, ask, fire, glow, inf };
   }
 
-  private refresh(_s: GameState, v: Village, e: VillageParts, time: number) {
+  private refresh(_s: GameState, v: Village, e: VillageParts, time: number, daylight: number) {
     const n = Math.max(1, Math.min(6, Math.round(1 + v.pop / 14)));
     e.huts.children.forEach((h, i) => { h.visible = i < n; });
     const grow = villageGrow(v);
@@ -124,6 +167,20 @@ export class Villages3D {
       (e.ask.material as THREE.SpriteMaterial).needsUpdate = true;
       e.ask.position.y = 1.9 + Math.sin(time * 0.004 + v.id) * 0.12;
     } else e.ask.visible = false;
+
+    const rad = influenceOf(v);
+    e.inf.scale.set(rad, rad, 1);
+    (e.inf.material as THREE.MeshBasicMaterial).opacity = 0.10 + v.belief * 0.14;
+
+    // กองไฟติดตอนมืด และแรงขึ้นตามความเชื่อ — กลางคืนจะได้ยังบอกได้ว่าหมู่บ้านไหนยังมีคนอยู่
+    const night = Math.max(0, 1 - daylight * 1.35);
+    const flicker = 0.88 + Math.sin(time * 0.011 + v.id) * 0.12;
+    e.fire.visible = e.glow.visible = night > 0.02;
+    if (e.fire.visible) {
+      (e.fire.material as THREE.MeshBasicMaterial).opacity = night;
+      (e.glow.material as THREE.SpriteMaterial).opacity = night * (0.35 + v.belief * 0.45) * flicker;
+      e.glow.scale.setScalar((2.6 + grow * 1.4) * flicker);
+    }
 
     if (v.plague > 0) {
       const p = 0.5 + 0.5 * Math.sin(time * 0.006);

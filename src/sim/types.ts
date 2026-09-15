@@ -100,6 +100,8 @@ export interface GameState {
   tick: number;
   year: number;
   dead: boolean;
+  /** ถึงเป้าหมายแล้ว — เกมไม่จบทันที แต่ฉากจบถูกปลดให้ดูได้ และเล่นต่อได้ถ้าอยาก */
+  won: boolean;
   fx: Effect[];
   log: string[];
   shake: number;

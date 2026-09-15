@@ -1,6 +1,7 @@
 import { mulberry32, type Rng } from "../core/rng";
 import { generateWorld, naturalWeather, stepLand } from "./world";
-import { foundVillage, stepVillages, totalPop } from "./village";
+import { faithCap, foundVillage, stepVillages, totalPop } from "./village";
+import { reachedGoal } from "./reign";
 import { makeCreature, newGenes, newWeights, stepCreature } from "./creature";
 import { maybeStartDisaster, stepDisasters } from "./disaster";
 import { isWater } from "./biomes";
@@ -11,9 +12,11 @@ import balance from "../../data/balance.json";
 export * from "./types";
 export * from "./miracle";
 export { ACTION_NAME, GENE_NAME, NEED_NAME as CREATURE_NEED_NAME, maxAge, teach, command,
-         bodySize, recall } from "./creature";
+         bodySize, recall, watchMiracle, placeCreature } from "./creature";
 export { totalPop, nearestVillage, neediestVillage, maxVillages, faithCap,
-         NEED_NAME } from "./village";
+         influenceOf, inInfluence, NEED_NAME } from "./village";
+export { computeReign, reachedGoal, goalBelievers, goalProgress } from "./reign";
+export type { Reign } from "./reign";
 export { tileAt, idx } from "./world";
 export { disasterLabel } from "./disaster";
 export { BIOMES, isWater, isHarsh, isShallow } from "./biomes";
@@ -27,7 +30,7 @@ export function createGame(seed: number): Game {
   const state: GameState = {
     tiles: generateWorld(rng), villages: [], creature: null as never, best: null,
     faith: balance.start.faith, align: 0, tick: 0, year: 0,
-    dead: false, fx: [], log: [], shake: 0,
+    dead: false, won: false, fx: [], log: [], shake: 0,
     disasters: [], lastDisasterTick: 0, landCount: 0,
     seed, rngState: 0, terrainVersion: 1,
   };
@@ -58,6 +61,16 @@ export function stepTick(g: Game): void {
   stepDisasters(s, g.rng, log);
   stepVillages(s, g.rng, log);
   stepCreature(s, g.rng, log);
+
+  // เพดานศรัทธาผูกกับจำนวนผู้ศรัทธา พอคนตายเพดานก็หดลง
+  // ศรัทธาที่สะสมไว้ต้องหดตาม ไม่งั้นจะค้างอยู่เหนือเพดานตลอดไป (npm run sim จับเจอ)
+  // นี่คือด่านเดียวที่บังคับเพดาน ทุกทางที่บวกศรัทธาจึงไม่ต้อง clamp เอง
+  s.faith = Math.min(s.faith, faithCap(s));
+
+  if (!s.won && reachedGoal(s)) {
+    s.won = true;
+    log("ผู้คนทั้งเกาะเอ่ยพระนามของท่านพร้อมกัน");
+  }
   if (totalPop(s) < 1 && s.faith < balance.start.deadFaithFloor) s.dead = true;
 }
 
