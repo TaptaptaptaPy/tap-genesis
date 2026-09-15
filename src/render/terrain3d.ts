@@ -7,6 +7,7 @@ import balance from "../../data/balance.json";
 import models from "../../data/models.json";
 import { bakedGeometry } from "./gltf";
 import { villageFootprint } from "./layout";
+import { Water3D } from "./water";
 
 const { W, H } = balance.world;
 
@@ -63,7 +64,7 @@ export class Terrain3D {
   private propGeo: { tree?: THREE.BufferGeometry; rock?: THREE.BufferGeometry } = {};
   private lastState: GameState | null = null;
   readonly propsReady: Promise<void>;
-  private water: THREE.Mesh;
+  private water: Water3D;
 
   constructor(s: GameState) {
     const vw = W + 1, vh = H + 1;
@@ -89,20 +90,8 @@ export class Terrain3D {
     this.ground.castShadow = true;
     this.group.add(this.ground);
 
-    // ผิวน้ำ: ระนาบเดียวคลุมถึงขอบฟ้า ขยับขึ้นลงเบาๆ
-    // ต้องใหญ่กว่ารัศมีโดมท้องฟ้า (260) ไม่งั้นจะเห็นขอบทะเลเป็นเส้นตรง
-    //
-    // และต้อง "ทึบ" ด้วย ตอนเป็นโปร่งแสง 88% อีก 12% ที่เหลือคือช่องน้ำในตารางพื้นดิน
-    // ซึ่งมีแค่ในกรอบ 24×24 ของโลกเท่านั้น นอกกรอบไม่มี ทะเลเลยมีสองเฉด
-    // แบ่งกันด้วยเส้นตรงเป็นรูปสี่เหลี่ยมรอบเกาะ = "ขอบโลก" ที่ไม่ควรมี
-    // (ลองดันขอบตารางออกไป 240 หน่วยแล้ว ผลคือสามเหลี่ยมยักษ์ลากสีกับ normal เพี้ยนทั้งผืน)
-    const wgeo = new THREE.PlaneGeometry(W * 22, H * 22, 1, 1);
-    wgeo.rotateX(-Math.PI / 2);
-    const wmat = new THREE.MeshBasicMaterial({ color: 0x164b63, fog: true });
-    this.water = new THREE.Mesh(wgeo, wmat);
-    this.water.position.set(W / 2, 0.02, H / 2);
-    this.water.receiveShadow = false;
-    this.group.add(this.water);
+    this.water = new Water3D(s);
+    this.group.add(this.water.mesh);
 
     this.propsReady = Promise.all([
       bakedGeometry(models.props.tree, models.props.tint).then((g) => { this.propGeo.tree = g; }),
@@ -136,17 +125,13 @@ export class Terrain3D {
   }
 
   /** สีเปลี่ยนบ่อย (ความอุดม ไฟ ดินเสีย) · ต้นไม้เปลี่ยนเฉพาะตอนชีวนิเวศเปลี่ยนจริง */
-  update(s: GameState, time: number) {
+  update(s: GameState, time: number, daylight = 1) {
     if (s.tick - this.tickStamp >= 4 || s.terrainVersion !== this.version) {
       this.tickStamp = s.tick;
       this.refresh(s, s.terrainVersion !== this.version);
       this.version = s.terrainVersion;
     }
-    // ต้องอยู่เหนือ 0 เสมอ! `worldY()` ตัดทุกช่องที่ต่ำกว่าระดับน้ำทะเลให้เป็น y = 0 พอดี
-    // ของเดิมแกว่ง 0.02 ± 0.06 คือลงไปถึง -0.04 ทุกครึ่งรอบ ระนาบน้ำเลยมุดใต้พื้นทะเลเป็นช่วงๆ
-    // ผลคือเห็นสีช่องน้ำในตาราง 24×24 โผล่มาเป็นสี่เหลี่ยมข้าวหลามตัดรอบเกาะแล้วหายไป
-    // (นี่คือ "ขอบโลก" ตัวจริง — ที่แก้ไปก่อนหน้าคือคนละสาเหตุแต่อาการเดียวกัน)
-    this.water.position.y = 0.12 + Math.sin(time * 0.0009) * 0.05;
+    this.water.update(s, time, daylight);
   }
 
   private refresh(s: GameState, rebuildProps: boolean) {

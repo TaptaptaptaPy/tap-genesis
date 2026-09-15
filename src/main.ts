@@ -362,7 +362,7 @@ const loop = new FixedLoop(
     // เวลาบนเกาะเดินตาม tick ไม่ใช่นาฬิกาจริง กด 2x/4x แล้วพระอาทิตย์ต้องเคลื่อนเร็วขึ้นด้วย
     world.setTimeOfDay(testParams?.t ??
       ((s.tick % balance.time.ticksPerDay) / balance.time.ticksPerDay + 0.18) % 1);
-    terrain.update(s, now);
+    terrain.update(s, now, world.daylight);
     villages.update(s, now, world.daylight);
     villagers.update(s, dt);
     creature.update(s, s.creature, now, dt);
