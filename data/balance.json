@@ -326,5 +326,28 @@
     "boltOnWetAwe": 0.5,
     "blessOnWetFert": 0.35,
     "groveCleansesBlight": 0.8
+  },
+  "director": {
+    "_note": "ผู้กำกับ — อย่าส่งภัยตามนาฬิกา ส่งตามว่าตอนนี้ผู้เล่นอยู่ตรงไหน (แนวคิดจาก AI director ของ RimWorld ที่ spiritual successor ของ B&W ทั้งสองเจ้าใส่ไว้ตรงกัน)",
+    "hungryAt": 0.55,
+    "hungryWeight": 0.55,
+    "sickWeight": 0.25,
+    "runningWeight": 0.3,
+    "_faithlessWeight": "ศรัทธาของ *ผู้คน* คือสิ่งที่บอกว่าโลกนี้มีคนดูแลอยู่ไหม — ห้ามใช้ยอดศรัทธาในกระเป๋าเทพ เพราะเทพที่ปล่อยทิ้งไม่ได้ใช้เลย กระเป๋าจึงเต็มตลอดและอ่านออกมาว่าสบายมาก",
+    "faithlessWeight": 0.5,
+    "noPetWeight": 0.15,
+    "_holdAbove": "ลำบากเกินระดับนี้แล้วหยุดส่ง ซ้ำเข้าไปตอนนั้นไม่ได้สร้างเรื่อง มันแค่ทำให้เลิกเล่น",
+    "holdAbove": 0.55,
+    "_slackGain": "ยิ่งสบายยิ่งมีโอกาสโดน — ส่วนที่ทำให้มันเป็นผู้กำกับ ไม่ใช่นาฬิกา",
+    "slackGain": 1.6,
+    "_aimAtWeakest": "โอกาสที่จะเล็งหมู่บ้านที่เปราะที่สุดแทนหมู่บ้านที่เขาลงแรงไว้มากสุด",
+    "aimAtWeakest": 0.3,
+    "priestValue": 8,
+    "plaguePop": 18,
+    "forestTiles": 6,
+    "waterTiles": 5,
+    "fertTiles": 14,
+    "nearSpread": 2.5,
+    "fireSpread": 3.5
   }
 }

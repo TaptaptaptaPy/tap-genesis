@@ -1,8 +1,9 @@
-import { clamp, type Rng } from "../core/rng";
+import type { Rng } from "../core/rng";
 import { isWater } from "./biomes";
 import { setBiome, tileAt } from "./world";
 import { nearestVillage } from "./village";
-import type { Disaster, DisasterId, GameState, Tile } from "./types";
+import type { Disaster, DisasterId, GameState } from "./types";
+import { planDisaster } from "./director";
 import balance from "../../data/balance.json";
 
 const D = balance.disaster;
@@ -11,44 +12,21 @@ const LABEL: Record<DisasterId, string> = {
   drought: "ภัยแล้ง", wildfire: "ไฟป่า", plague: "โรคระบาด", flood: "อุทกภัย",
 };
 
-function landTiles(s: GameState): Tile[] {
-  return s.tiles.filter((t) => !isWater(t.biome));
-}
 
-function weightedKind(_s: GameState, rng: Rng): DisasterId {
-  const kinds: DisasterId[] = ["drought", "wildfire", "plague", "flood"];
-  const w = kinds.map((k) => (D.weights as Record<string, number>)[k]);
-  const sum = w.reduce((a, b) => a + b, 0);
-  let r = rng() * sum;
-  for (let i = 0; i < kinds.length; i++) { r -= w[i]; if (r <= 0) return kinds[i]; }
-  return "drought";
-}
-
-/** เลือกจุดเกิดเหตุ โดยเอียงเข้าหาที่ที่มีคนอยู่ — ภัยที่ไม่มีใครเดือดร้อนไม่ใช่ภัย */
-function pickSpot(s: GameState, rng: Rng, nearVillage: boolean): { x: number; y: number } | null {
-  if (nearVillage && s.villages.length) {
-    const v = s.villages[Math.floor(rng() * s.villages.length)];
-    const r = 3;
-    const x = clamp(Math.round(v.x + (rng() - 0.5) * r * 2), 0, balance.world.W - 1);
-    const y = clamp(Math.round(v.y + (rng() - 0.5) * r * 2), 0, balance.world.H - 1);
-    const t = tileAt(s.tiles, x, y);
-    if (t && !isWater(t.biome)) return { x, y };
-  }
-  const land = landTiles(s);
-  if (!land.length) return null;
-  const t = land[Math.floor(rng() * land.length)];
-  return { x: t.x, y: t.y };
-}
+/** ชนิดกับจุดเกิดเหตุถูกย้ายไปอยู่ใน `src/sim/director.ts` ทั้งคู่
+ *  ของเดิมคือ `weightedKind()` + `pickSpot()` ที่สุ่มล้วน ลบทิ้งแล้วเพราะไม่มีใครเรียก
+ *  และโค้ดที่ตายแล้วอันตรายกว่าโค้ดที่หายไป — วันหนึ่งจะมีคนเรียกมันโดยไม่รู้ว่ามันไม่ใช่ทางหลัก */
 
 export function maybeStartDisaster(s: GameState, rng: Rng, log: (m: string) => void): void {
   if (s.tick < D.graceTicks) return;   // ปล่อยให้อารยธรรมตั้งไข่ให้รอดก่อน
   if (s.tick % D.checkEveryTicks !== 0) return;
   if (s.tick - s.lastDisasterTick < D.minTicksBetween) return;
-  if (rng() > D.baseChance) return;
 
-  const kind = weightedKind(s, rng);
-  const spot = pickSpot(s, rng, kind !== "wildfire");
-  if (!spot) return;
+  // ผู้กำกับตัดสินว่าควรเกิดอะไรที่ไหน — ไม่ใช่สุ่มชนิดแล้วสุ่มจุด ดู src/sim/director.ts
+  const plan = planDisaster(s, rng);
+  if (!plan) return;
+  const kind = plan.kind;
+  const spot = { x: plan.x, y: plan.y };
   s.lastDisasterTick = s.tick;
 
   if (kind === "plague") {

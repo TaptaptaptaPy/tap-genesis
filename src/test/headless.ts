@@ -12,7 +12,7 @@ import { createGame, stepTick, stepEffects, totalPop, maxVillages, snapshot, res
        stroke, smack,
          tileAt, bodySize, faithCap, saveLooksValid, castSpell, spellCost, spellFor,
          SPELLS, teach, neediestVillage, isWater, inInfluence, computeReign, goalBelievers,
-         TRAITS, TRAIT_IDS,
+         TRAITS, TRAIT_IDS, pressure,
          grabAt, throwTo, dropCarry, whatIsAt, CARRY_NAME, GENE_NAME, NEED_NAME,
          type CarryKind, type Game, type GameState, type GeneId, type Genes, type NeedId,
          type Village }
@@ -295,6 +295,10 @@ interface Outcome {
   beliefByTrait: Record<string, number[]>;
   /** สภาพจิตใจของสัตว์ตอนจบ และกี่ครั้งที่มันรอให้พระเจ้าละสายตาก่อนค่อยทำ */
   fear: number; curious: number; deceits: number;
+  /** ผู้กำกับส่งภัยมากี่ครั้ง และแรงกดดันเฉลี่ยตอนที่มันส่ง */
+  disasterCount: number;
+  /** แรงกดดันตอนที่ภัยลงจริง เทียบกับแรงกดดันตลอดทั้งเกม */
+  firePressure: number[]; pressureSamples: number[];
   drift: string; disasters: string; god: GodStats;
 }
 
@@ -308,12 +312,18 @@ function runWorld(seed: number, persona: Persona): Outcome {
   const gen0: Genes = { ...s.creature.genes };
   const seen: Record<string, number> = {};
   let peak = 0, worstAlign = 0, askTicks = 0, overflow = 0;
+  const firePressure: number[] = [], pressureSamples: number[] = [];
 
   for (let i = 0; i < ticks; i++) {
     const before = s.disasters.length;
+    // ต้องวัด *ก่อน* เดิน tick เพราะภัยที่เพิ่งลงเปลี่ยนแรงกดดันทันที
+    const pBefore = s.villages.length ? pressure(s) : 1;
+    if (i % 10 === 0 && s.villages.length) pressureSamples.push(pBefore);
     stepTick(g);
-    if (s.disasters.length > before)
+    if (s.disasters.length > before) {
+      firePressure.push(pBefore);
       for (const d of s.disasters.slice(before)) seen[d.name] = (seen[d.name] ?? 0) + 1;
+    }
     divine(g, persona, st, log);
     stepEffects(s, balance.time.tickSeconds);   // กันไม่ให้อนุภาคจากคาถาสะสมไม่รู้จบ
     peak = Math.max(peak, totalPop(s));
@@ -339,6 +349,8 @@ function runWorld(seed: number, persona: Persona): Outcome {
       (m[v.trait] ??= []).push(v.belief); return m;
     }, {} as Record<string, number[]>),
     fear: s.creature.fear, curious: s.creature.curious, deceits: s.deceits,
+    firePressure, pressureSamples,
+    disasterCount: s.log.filter((l) => /ภัยแล้ง|ไฟป่า|โรคระบาด|อุทกภัย|แผ่นดินแตก|น้ำหลาก/.test(l)).length,
     priests: s.villages.reduce((n, v) => n + v.folk.reduce((m, f) => m + (f.priest ? 1 : 0), 0), 0),
     starved: s.villages.some((v) => v.needs.food < 0.5), year: s.year,
     drift: GENES.map((k) => `${GENE_NAME[k]} ${gen0[k].toFixed(2)}→${s.creature.genes[k].toFixed(2)}`).join("  "),
@@ -467,6 +479,25 @@ const throwTotal = Object.values(thrownAll).reduce((a, b) => a + b, 0);
 const personas = ["none", "kind", "wrath"] as Persona[];
 const strokeTotal = personas.reduce((n, p) => n + all[p].reduce((m, o) => m + o.god.strokes, 0), 0);
 const smackTotal = personas.reduce((n, p) => n + all[p].reduce((m, o) => m + o.god.smacks, 0), 0);
+{
+  // สิ่งที่ผู้กำกับสัญญาไว้ไม่ใช่ "โลกไหนโดนมากกว่ากัน" — โลกที่มีเทพดูแลมีคนเยอะกว่า
+  // จึงอ่านออกมาว่าเครียดกว่าโดยธรรมชาติ เทียบข้ามโหมดจึงไม่ได้วัดอะไรเลย
+  // สิ่งที่มันสัญญาคือ: **ภัยลงตอนที่ยังรับไหว ไม่ใช่ตอนที่กำลังจะพัง**
+  const dis = (p: Persona) => all[p].reduce((n, o) => n + o.disasterCount, 0);
+  const atFire = personas.flatMap((p) => all[p].flatMap((o) => o.firePressure));
+  const overall = personas.flatMap((p) => all[p].flatMap((o) => o.pressureSamples));
+  const m = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / Math.max(1, xs.length);
+  console.log(`ผู้กำกับเลือกจังหวะเป็นไหม: ภัยลงตอนแรงกดดันเฉลี่ย ${m(atFire).toFixed(2)}` +
+              ` · แรงกดดันเฉลี่ยทั้งเกม ${m(overall).toFixed(2)}` +
+              ` · ส่งรวม เมตตา ${dis("kind")} · ปล่อยทิ้ง ${dis("none")} · พิโรธ ${dis("wrath")}`);
+  if (dis("kind") === 0)
+    console.log("เตือน: ไม่มีภัยพิบัติเลยสักครั้งในโลกที่มีเทพดูแล ผู้กำกับไม่ได้ทำงาน");
+  if (atFire.length && m(atFire) >= m(overall))
+    console.log("เตือน: ภัยลงตอนที่เครียดพอๆ กับค่าเฉลี่ย ผู้กำกับไม่ได้เลือกจังหวะอะไรเลย");
+  if (atFire.some((x) => x > balance.director.holdAbove + 0.001))
+    console.log("เตือน: มีภัยลงตอนที่แรงกดดันเกินเกณฑ์หยุด ซึ่งไม่ควรเกิดขึ้นได้เลย");
+}
+
 console.log(`มือลูบและตีได้จริงไหม: ลูบรวม ${strokeTotal} ครั้ง · ตีรวม ${smackTotal} ครั้ง`);
 
 {
