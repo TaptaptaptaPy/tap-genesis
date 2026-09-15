@@ -6,6 +6,8 @@
  *  ลูปหลักของเกม (ขาด → ร้องขอ → ปาฏิหาริย์ → ศรัทธา) จึงไม่มีอะไรคุมอยู่เลย
  *  และเลข "ศรัทธาเต็มคาป ผูกพัน 0%" ที่เคยเห็นทุกโลกก็มาจากการที่ไม่มีใครใช้มัน
  *  ไม่ใช่เพราะสมดุลพัง — ตัวเลขที่อ่านผิดได้แบบนั้นแย่กว่าไม่มีตัวเลขเลย */
+import { readFileSync, readdirSync } from "node:fs";
+import { join } from "node:path";
 import { createGame, stepTick, stepEffects, totalPop, maxVillages, snapshot, restore,
        stroke, smack,
          tileAt, bodySize, faithCap, saveLooksValid, castSpell, spellCost, spellFor,
@@ -488,3 +490,25 @@ if (wonOf("none") > 0)
   console.log("เตือน: โลกที่ไม่มีเทพก็ถึงเป้าหมายได้ เป้านี้ไม่ได้วัดอะไรเลย");
 if (worstOverflow > 0.5)
   console.log("เตือน: ศรัทธาทะลุ faithCap() ได้ — การร่ายรำบูชาของสัตว์ใน creature.ts บวกศรัทธาโดยไม่ clamp");
+
+// ───────── เสียงที่นิยามไว้แต่ไม่มีใครเรียก ─────────
+// เหตุการณ์ที่เกิดขึ้นแล้วเงียบสนิทเป็นบั๊กชนิดที่ไม่มี error ให้เห็น และเล่นเองก็ไม่รู้ว่าขาดอะไร
+// คาถาถูกเรียกแบบ dynamic (`sfx[armed]()`) การหาชื่อตรงๆ จึงมองไม่เห็น ต้องยกเว้นให้
+{
+  const root = new URL("../", import.meta.url).pathname;
+  const files: string[] = [];
+  (function walk(d: string) {
+    for (const e of readdirSync(d, { withFileTypes: true }))
+      if (e.isDirectory()) walk(join(d, e.name));
+      else if (e.name.endsWith(".ts")) files.push(join(d, e.name));
+  })(root);
+  const all = files.map((f) => readFileSync(f, "utf8")).join("\n");
+  const audio = readFileSync(join(root, "core/audio.ts"), "utf8");
+  const names = [...audio.slice(audio.indexOf("export const sfx"))
+    .matchAll(/^\s{2}([a-z]+):\s*\(\)/gm)].map((m) => m[1]);
+  const spellIds = new Set(SPELLS.map((sp) => sp.id));
+  const silent = names.filter((n) => !spellIds.has(n) && !new RegExp(`sfx\\.${n}\\(`).test(all));
+  console.log(`เสียงประกอบ: นิยามไว้ ${names.length} · คาถาเรียกแบบ dynamic ${spellIds.size}` +
+              ` · ที่เหลือมีคนเรียกครบ ${silent.length === 0 ? "ใช่" : "ไม่ใช่"}`);
+  if (silent.length) console.log(`เตือน: เสียงที่ไม่มีใครเรียก — ${silent.join(" ")}`);
+}

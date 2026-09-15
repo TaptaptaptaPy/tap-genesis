@@ -399,6 +399,9 @@ function bgmFor(s: Game["state"], daylight: number): string {
   return daylight < 0.25 ? "night" : "calm";
 }
 
+let lastAsking = 0;
+/** ก้อนเอฟเฟกต์ที่เล่นเสียงไปแล้ว — WeakSet เพราะ sim ทิ้งก้อนเก่าเองเมื่อหมดอายุ */
+const fxSeen = new WeakSet<object>();
 let lastCombos = 0, lastPriests = 0, lastVillages = 1, creatureWasAlive = true;
 let lastAutosave = 0;
 const loop = new FixedLoop(
@@ -429,6 +432,18 @@ const loop = new FixedLoop(
     lastVillages = s.villages.length;
     if (!s.creature.alive && creatureWasAlive) sfx.died();
     creatureWasAlive = s.creature.alive;
+    // ของที่ขว้างออกไปตกลงพื้นหรือตกน้ำ — `s.fx` คือทางที่ sim บอกหน้าจอว่าเกิดอะไรขึ้นอยู่แล้ว
+    // ก้อนใหม่คือก้อนที่ยังไม่เคยเห็น ไม่ใช่ก้อนที่ t == 0 (เฟรมกับ tick ไม่ได้เดินพร้อมกัน)
+    for (const f of s.fx) {
+      if (fxSeen.has(f)) continue;
+      fxSeen.add(f);
+      if (f.kind === "ripple") sfx.splash();
+      else if (f.kind === "dust") sfx.land();
+    }
+    // หมู่บ้านที่กำลังขาดอะไรสักอย่าง — คำขอที่ไม่มีเสียงคือคำขอที่ผู้เล่นไม่ได้ยิน
+    const asking = s.villages.filter((v: Village) => v.needs.food < 0.5 || v.plague > 0).length;
+    if (asking > lastAsking) sfx.ask();
+    lastAsking = asking;
 
     bgm.want(bgmFor(s, world.daylight));
     bgm.update(dt);
