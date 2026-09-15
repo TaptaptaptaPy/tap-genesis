@@ -6,6 +6,7 @@ import { createGame, stepTick, stepEffects, castSpell, teach, command,
 import { World3D } from "./render/world3d";
 import { Terrain3D } from "./render/terrain3d";
 import { Creature3D, Villages3D } from "./render/actors3d";
+import { Villagers3D } from "./render/villagers3d";
 import { Fx3D } from "./render/fx3d";
 import { Hud } from "./ui/hud";
 import { clearSlot, readSlot, slotMeta, writeSlot, SLOTS, type SlotId } from "./core/storage";
@@ -24,9 +25,10 @@ let selected: { x: number; y: number } | null = null;
 const world = new World3D(cv);
 let terrain = new Terrain3D(game.state);
 const villages = new Villages3D();
+const villagers = new Villagers3D();
 const creature = new Creature3D();
 const fx = new Fx3D();
-world.scene.add(terrain.group, villages.group, creature.root, fx.group);
+world.scene.add(terrain.group, villages.group, villagers.group, creature.root, fx.group);
 
 const hud = new Hud((id) => {
   armedCmd = null; hud.setCommand(null);
@@ -244,6 +246,7 @@ const loop = new FixedLoop(
     world.shake = Math.max(world.shake, s.shake);
     terrain.update(s, now);
     villages.update(s, now);
+    villagers.update(s, dt);
     creature.update(s, s.creature, now);
     const sp = armed ? SPELLS.find((x) => x.id === armed)! : null;
     fx.setCursor(s, hover ?? selected, sp ? sp.radius : null, sp?.dark ?? false);
@@ -301,6 +304,6 @@ window.addEventListener("resize", () => world.resize());
 // เปิดทางให้ตรวจสอบฉากจาก console ตอนพัฒนา — ชั้น 3 มิติดีบั๊กยากถ้ามองจากข้างนอกไม่ได้
 if (import.meta.env.DEV)
   (window as unknown as Record<string, unknown>).__genesis =
-    { get game() { return game; }, world, villages, creature, terrain: () => terrain,
+    { get game() { return game; }, world, villages, villagers, creature, terrain: () => terrain,
       state: () => ({ pointers: pointers.size, dragged, armed }) };
 loop.start();

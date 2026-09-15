@@ -81,6 +81,12 @@ npm run check     # tsc --noEmit
   พอเหลือ `creature` ตัวเดียว มันเลยตอบ false กับเซฟทุกไฟล์ เกมเซฟลงได้แต่โหลดไม่ขึ้นสักช่อง
   และ `npm run sim` มองไม่เห็นเพราะเรียก `snapshot`/`restore` ตรงๆ ข้ามด่านนี้ไป
   **เทสต์เซฟต้องเดินทางเดียวกับที่ `main.ts` ใช้เสมอ** ไม่ใช่ทางลัด
+- **ชาวบ้านใน `villagers3d.ts` ต้องยืนนอก `villageFootprint(v)` เสมอ** กลุ่มกระท่อมโตตามประชากร
+  จนกินรัศมีเกือบ 1.7 ตอนหมู่บ้านใหญ่ ถ้าวางคนด้วยเลขคงที่ หมู่บ้านยิ่งโตยิ่งกลืนคนของตัวเองจนหายไปหมด
+  ขนาดหมู่บ้านถูกเปิดออกมาจาก `actors3d.ts` เป็นแหล่งเดียว แก้ผังกระท่อมต้องแก้ `HUT_SPREAD` ด้วย
+  (ข้อสังเกตที่ยังไม่ได้แก้: `workRadius` มีแค่ 2 แต่หมู่บ้านกินรัศมี ~1.7 — มันเกือบกลืนไร่ตัวเอง)
+- **ชาวบ้านใช้ `dt` ไม่ใช่ `performance.now()`** `dt` จาก FixedLoop คูณความเร็วเกมมาแล้ว
+  ถ้าใช้เวลานาฬิกาจริง กด 4× โลกจะเดินเร็วขึ้นแต่คนยังเดินเท่าเดิม
 - **`setPointerCapture` โยน error ได้กับ pointer บางชนิด** ถ้าไม่ดัก try/catch ไว้
   `pointerdown` จะตายกลางคันและการแตะครั้งนั้นหายไปทั้งครั้ง
 - **ตรวจฉาก 3 มิติจาก console ได้** ตอน dev มี `window.__genesis` = { game, world, villages, creature, terrain(), state() }
@@ -90,7 +96,8 @@ npm run check     # tsc --noEmit
 ```
 src/sim/      ตรรกะเกมล้วน ไม่มี DOM — world, village, creature, miracle, disaster, serialize
 src/render/   world3d.ts (ฉาก แสง กล้องโคจร raycast) · terrain3d.ts (เกาะ mesh + ต้นไม้ + ทะเล)
-              actors3d.ts (หมู่บ้าน + สัตว์) · fx3d.ts (อนุภาค + มือของพระเจ้า)  [Three.js]
+              actors3d.ts (หมู่บ้าน + สัตว์) · villagers3d.ts (ชาวบ้านที่เดินได้)
+              fx3d.ts (อนุภาค + มือของพระเจ้า)  [Three.js]
 src/core/     loop.ts (fixed timestep), rng.ts (mulberry32 + state), storage.ts (localStorage)
 src/ui/       hud.ts — แถบบน ปุ่มคาถา แผงสัตว์ แผงตรวจสอบช่อง และ "แถบบอกว่าควรทำอะไร"
 src/test/     headless.ts — `npm run sim`

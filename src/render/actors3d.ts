@@ -30,10 +30,21 @@ interface VillageParts {
   root: THREE.Group; huts: THREE.Group; ring: THREE.Mesh; ask: THREE.Sprite;
 }
 
-const HUT_GEO = new THREE.ConeGeometry(0.42, 0.8, 6);
+const HUT_R = 0.42;
+const HUT_GEO = new THREE.ConeGeometry(HUT_R, 0.8, 6);
 HUT_GEO.translate(0, 0.4, 0);
 const WALL_GEO = new THREE.CylinderGeometry(0.34, 0.38, 0.42, 6);
 WALL_GEO.translate(0, 0.21, 0);
+
+/** กระท่อมหลังไกลสุดอยู่ที่รัศมีเท่านี้ (ดู build() ข้างล่าง) */
+const HUT_SPREAD = 1.06;
+
+/** หมู่บ้านโตขึ้นตามประชากร — ใช้ที่เดียวกันทั้งตอนวาดกระท่อมและตอนวางชาวบ้าน */
+export const villageGrow = (v: Village) => 0.75 + Math.min(0.55, v.pop / 120);
+
+/** ขอบนอกสุดที่กลุ่มกระท่อมกินจริง `villagers3d.ts` ใช้ค่านี้เพื่อไม่ให้คนไปยืนซ้อนอยู่ในหลังคา
+ *  ถ้าแก้ผังกระท่อมใน build() ต้องแก้ HUT_SPREAD ด้วย ไม่งั้นคนจะจมหายไปในหมู่บ้านเงียบๆ */
+export const villageFootprint = (v: Village) => (HUT_SPREAD + HUT_R) * villageGrow(v);
 
 export class Villages3D {
   readonly group = new THREE.Group();
@@ -100,7 +111,7 @@ export class Villages3D {
   private refresh(_s: GameState, v: Village, e: VillageParts, time: number) {
     const n = Math.max(1, Math.min(6, Math.round(1 + v.pop / 14)));
     e.huts.children.forEach((h, i) => { h.visible = i < n; });
-    const grow = 0.75 + Math.min(0.55, v.pop / 120);
+    const grow = villageGrow(v);
     e.huts.scale.setScalar(grow);
 
     const mat = e.ring.material as THREE.MeshBasicMaterial;
