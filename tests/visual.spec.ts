@@ -75,14 +75,20 @@ test("หมู่บ้านระยะใกล้ — กระท่อม
   // เหตุผลเดียวกับภาพสัตว์: ของเล็กต้องมีภาพของตัวเอง ไม่งั้นเปลี่ยนไปก็ไม่มีใครรู้
   await page.goto(world(20260915, 0.3));
   await ready(page);
+  // เดินเวลาให้ชาวบ้านออกมาเดินก่อน ไม่งั้นหมู่บ้านจะว่างเปล่า
+  await page.evaluate(() => {
+    const g = (window as any).__genesis;
+    for (const v of g.game.state.villages) v.pop = 60;
+    g.step(60);
+  });
   await page.evaluate(() => {
     const g = (window as any).__genesis, w = g.world;
     const v = g.game.state.villages[0];
     const e = g.villages.group.children[0];
     w.center.set(e.position.x, e.position.y + 0.5, e.position.z);
     w.targetCenter?.set?.(e.position.x, e.position.y + 0.5, e.position.z);
-    w.distance = w.targetDistance = 4.2;
-    w.elevation = 0.5;
+    w.distance = w.targetDistance = 7.5;
+    w.elevation = 0.72;
     w.azimuth = Math.PI * 0.25;
     void v;
   });

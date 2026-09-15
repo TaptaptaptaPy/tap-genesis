@@ -37,5 +37,20 @@
       "colorRedDark": "#7d5238",
       "wood": "#6e5233"
     }
+  },
+  "folk": {
+    "_note": "ชาวบ้าน — โมเดลนี้ขยับด้วยการหมุนชิ้นส่วนแต่ละชิ้น ไม่ได้ใช้โครงกระดูก จึงไม่ต้องคำนวณ skinning",
+    "file": "/assets/models/folk.glb",
+    "credit": "Kenney · Blocky Characters 2.0 · CC0",
+    "_jobs": "งานของชาวบ้านใน src/sim/folk.ts → ชื่อท่าในไฟล์",
+    "clips": {
+      "walk": "walk",
+      "idle": "idle",
+      "farm": "pick-up",
+      "wood": "pick-up",
+      "build": "interact-right",
+      "pray": "emote-yes",
+      "sick": "sit"
+    }
   }
 }

@@ -1,4 +1,7 @@
 import * as THREE from "three";
+import { clone as cloneSkeleton } from "three/examples/jsm/utils/SkeletonUtils.js";
+import { loadRigged, flattenToLambert, normalise, type Rigged } from "./gltf";
+import models from "../../data/models.json";
 import type { Folk, GameState, Village } from "../sim/types";
 import { groundY } from "./terrain3d";
 
@@ -16,6 +19,10 @@ import { groundY } from "./terrain3d";
 /** จำนวนช่องคนสูงสุดที่วาดได้ทั้งเกาะ — `folk.maxPerVillage` × จำนวนหมู่บ้านสูงสุดพอดี */
 const MAX_BODIES = 96;
 
+/** ความสูงของชาวบ้านเทียบกับหน่วยโลก — โมเดลถูกย่อให้สูง 1 หน่วยตอนโหลด
+ *  กระท่อมสูงราว 0.9 คนจึงต้องราว 0.45 ถึงจะได้สัดส่วนบ้านต่อคนแบบบ้านจริง */
+const FOLK_SCALE = 0.34;
+
 /** ผ้าย้อมสีเดียวกันทั้งหมู่บ้านดูตาย — ผูกสีกับหมายเลขช่องเพื่อไม่ให้กระพริบทุกเฟรม */
 const CLOTH = [0x9a5340, 0x4d5f80, 0x8a6f2a, 0x6d4a63, 0xb0674a, 0x56705a];
 
@@ -26,6 +33,13 @@ export class Villagers3D {
   private load: THREE.InstancedMesh;
   private dummy = new THREE.Object3D();
   private clock = 0;
+
+  /** คนจริงที่มีท่าทาง — มาถึงทีหลัง ระหว่างรอใช้กรวยกับทรงกลมแบบเดิมไปก่อน
+   *  หนึ่งคนหนึ่งร่าง เพราะแต่ละคนทำงานคนละอย่างจึงเล่นคนละท่า
+   *  InstancedMesh ทำแบบนั้นไม่ได้ มันวาดรูปทรงเดียวกันทุกตัว */
+  private rigSrc: Rigged | null = null;
+  private bodies: { root: THREE.Object3D; rig: Rigged; clip: string }[] = [];
+  readonly ready: Promise<void>;
 
   /** หันหัวก่อน (Y) แล้วค่อยเอนตัวไปข้างหน้า (X) — ลำดับ XYZ ปกติจะเอนผิดทาง */
   private readonly ORDER = "YXZ" as const;
@@ -58,6 +72,14 @@ export class Villagers3D {
     for (let i = 0; i < MAX_BODIES; i++)
       this.body.setColorAt(i, new THREE.Color(CLOTH[i % CLOTH.length]));
     if (this.body.instanceColor) this.body.instanceColor.needsUpdate = true;
+
+    this.ready = loadRigged(models.folk.file).then((r) => {
+      normalise(r.scene);
+      flattenToLambert(r.scene);
+      this.rigSrc = r;
+      // ซ่อนทรงเดิม ไม่ลบทิ้ง เผื่อวันไหนอยากเทียบว่าแบบไหนเร็วกว่า
+      for (const m of [this.body, this.head, this.load]) m.visible = false;
+    });
   }
 
   /** `dt` มาจาก FixedLoop ซึ่งคูณความเร็วเกมมาแล้ว — ใช้กับการแกว่งขาเท่านั้น
@@ -70,8 +92,14 @@ export class Villagers3D {
     for (const v of s.villages) {
       for (const f of v.folk) {
         if (k >= MAX_BODIES) break;
-        this.place(s, v, f, k++);
+        if (this.rigSrc) this.placeBody(s, v, f, k++, dt);
+        else this.place(s, v, f, k++);
       }
+    }
+
+    if (this.rigSrc) {
+      for (let i = k; i < this.bodies.length; i++) this.bodies[i].root.visible = false;
+      return;
     }
 
     for (; k < MAX_BODIES; k++) this.hide(k);
@@ -79,6 +107,58 @@ export class Villagers3D {
     this.body.instanceMatrix.needsUpdate = true;
     this.head.instanceMatrix.needsUpdate = true;
     this.load.instanceMatrix.needsUpdate = true;
+  }
+
+  /** ท่าที่ควรเล่น — มาจากงานที่ชาวบ้านคนนี้กำลังทำ ซึ่ง `src/sim/folk.ts` ตัดสินใจไว้แล้ว */
+  private clipFor(f: Folk, moving: boolean): string {
+    const c = models.folk.clips;
+    if (f.job === "sick") return c.sick;
+    if (moving) return c.walk;
+    if (f.job === "pray") return c.pray;
+    if (f.job === "farm") return c.farm;
+    if (f.job === "wood") return c.wood;
+    if (f.job === "build") return c.build;
+    return c.idle;
+  }
+
+  private placeBody(s: GameState, v: Village, f: Folk, k: number, dt: number) {
+    while (this.bodies.length <= k) {
+      const root = cloneSkeleton(this.rigSrc!.scene) as THREE.Object3D;
+      root.traverse((o) => { const m = o as THREE.Mesh; if (m.isMesh) m.castShadow = true; });
+      const mixer = new THREE.AnimationMixer(root);
+      const actions: Record<string, THREE.AnimationAction> = {};
+      for (const [name, a] of Object.entries(this.rigSrc!.actions))
+        actions[name] = mixer.clipAction(a.getClip());
+      let current: THREE.AnimationAction | null = null;
+      const rig: Rigged = {
+        scene: root as THREE.Group, mixer, actions,
+        play(name, fade = 0.2) {
+          const next = actions[name];
+          if (!next || next === current) return;
+          next.reset().play();
+          if (current) current.crossFadeTo(next, fade, false);
+          current = next;
+        },
+        update(d) { mixer.update(d); },
+      };
+      this.group.add(root);
+      this.bodies.push({ root, rig, clip: "" });
+    }
+
+    const b = this.bodies[k];
+    const dx = f.tx - f.x, dy = f.ty - f.y;
+    const dist = Math.hypot(dx, dy);
+    const moving = f.rest <= 0 && dist > 0.12;
+
+    b.root.visible = true;
+    b.root.position.set(f.x, groundY(s, f.x, f.y), f.y);
+    b.root.scale.setScalar(FOLK_SCALE);
+    if (moving) b.root.rotation.y = Math.atan2(dx, dy);
+
+    const want = this.clipFor(f, moving);
+    if (want !== b.clip) { b.rig.play(want); b.clip = want; }
+    b.rig.update(dt);
+    void v;
   }
 
   private place(s: GameState, v: Village, f: Folk, k: number) {

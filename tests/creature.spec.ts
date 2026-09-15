@@ -46,3 +46,43 @@ test("เปลี่ยนสิ่งที่สัตว์ทำ แล้�
   });
   expect(missing, "ตารางท่าอ้างถึงท่าที่ไม่มีในไฟล์").toEqual([]);
 });
+
+/** ท่าของชาวบ้านต้องมาจากงานที่เขาทำ เหมือนกับสัตว์
+ *  `src/sim/folk.ts` ตัดสินใจงานให้แล้วจากสภาพหมู่บ้าน ชั้นภาพแค่เล่าออกมา */
+test("เปลี่ยนงานของชาวบ้าน แล้วท่าต้องเปลี่ยนตาม", async ({ page }) => {
+  await page.goto("/?seed=20260915&t=0.3");
+  await page.waitForFunction(() => (window as any).__genesis?.propsReady === true);
+
+  const seen = await page.evaluate(() => {
+    const g = (window as any).__genesis;
+    const s = g.game.state, vg = g.villagers as any;
+    for (const v of s.villages) v.pop = 60;
+    g.step(40);
+    const v = s.villages[0], f = v.folk[0];
+    const out: Record<string, string> = {};
+    const step = (label: string, job: string, moving: boolean) => {
+      f.job = job;
+      f.rest = moving ? 0 : 99;
+      f.tx = moving ? f.x + 3 : f.x;
+      f.ty = moving ? f.y + 3 : f.y;
+      vg.update(s, 1 / 60);
+      out[label] = vg.bodies[0]?.clip ?? "ไม่มีร่าง";
+    };
+    step("เดินไปทำงาน", "farm", true);
+    step("ทำไร่",       "farm", false);
+    step("หาไม้",       "wood", false);
+    step("ซ่อมบ้าน",    "build", false);
+    step("บูชา",        "pray", false);
+    step("นอนซม",       "sick", false);
+    step("ยืนเฉยๆ",     "idle", false);
+    return out;
+  });
+
+  expect(seen["เดินไปทำงาน"]).toBe("walk");
+  expect(seen["ทำไร่"]).toBe("pick-up");
+  expect(seen["หาไม้"]).toBe("pick-up");
+  expect(seen["ซ่อมบ้าน"]).toBe("interact-right");
+  expect(seen["บูชา"]).toBe("emote-yes");
+  expect(seen["นอนซม"]).toBe("sit");
+  expect(seen["ยืนเฉยๆ"]).toBe("idle");
+});

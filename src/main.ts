@@ -481,9 +481,11 @@ if (import.meta.env.DEV)
     { get game() { return game; }, world, villages, villagers, creature, terrain: () => terrain,
       get creatureReady() { return creatureLoaded; },
       get propsReady() { return propsLoaded; },
+      step: (n = 1) => { for (let i = 0; i < n; i++) stepTick(game); },
       state: () => ({ pointers: pointers.size, dragged, armed }) };
 let creatureLoaded = false;
 let propsLoaded = false;
 void creature.ready.then(() => { creatureLoaded = true; });
-void Promise.all([terrain.propsReady, villages.ready]).then(() => { propsLoaded = true; });
+void Promise.all([terrain.propsReady, villages.ready, villagers.ready])
+  .then(() => { propsLoaded = true; });
 loop.start();
