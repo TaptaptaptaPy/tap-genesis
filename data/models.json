@@ -3,7 +3,7 @@
   "_clips": "ชื่อท่าเป็นชื่อที่อยู่ในไฟล์จริง ห้ามเดา ทุกชุดโมเดลตั้งชื่อไม่เหมือนกัน",
   "creature": {
     "file": "/assets/models/creature-ox.glb",
-    "credit": "Quaternius · Ultimate Animated Animals · CC0",
+    "credit": "Quaternius · Ultimate Animated Animals (Cow) · CC0",
     "_faceOffset": "โมเดลหันหน้าไปทางไหนตอนมุม 0 — บวกเข้ากับ c.facing",
     "faceOffset": 1.5707963,
     "clips": {
