@@ -39,7 +39,7 @@ export function createGame(seed: number): Game {
     dead: false, won: false, carrying: null, carryFrom: null, carryFolk: null, thrown: [],
     fx: [], log: [], shake: 0,
     disasters: [], lastDisasterTick: 0, landCount: 0,
-    seed, rngState: 0, terrainVersion: 1, combos: 0,
+    seed, rngState: 0, terrainVersion: 1, combos: 0, attention: 0, deceits: 0,
   };
   state.landCount = state.tiles.filter((t) => !isWater(t.biome)).length;
 

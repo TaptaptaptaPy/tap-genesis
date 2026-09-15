@@ -3,6 +3,7 @@ import { ACTION_NAME, CREATURE_NEED_NAME, GENE_NAME, NEED_NAME, SPELLS, spellCos
          goalBelievers,
          type GameState, type NeedId, type Village } from "../sim/index";
 import { sfx } from "../core/audio";
+import balance from "../../data/balance.json";
 
 const SIGIL: Record<string, string> = {
   rain:  '<path d="M5 10a4 4 0 018-1 3 3 0 011 5.8"/><path d="M8 17l-1 3M12 17l-1 3M16 17l-1 3"/>',
@@ -164,6 +165,11 @@ export class Hud {
     const c = s.creature;
     let h = `<h3>สัตว์รุ่นที่ ${c.gen}${s.best ? ` · สถิติชีวิตสูงสุด ${Math.round(s.best.fit)}` : ""}</h3>`;
     h += `<div class="sub">ขนาดตัว ${bodySize(c).toFixed(2)} · ความผูกพัน ${pct(c.bond)} · จำสถานที่ได้ ${Object.keys(c.mem).length} แห่ง</div>`;
+    // สภาพจิตใจต้องมองเห็นได้ ไม่งั้นผู้เล่นจะไม่มีทางรู้ว่าสอนไม่เข้าเพราะอะไร
+    h += `<div class="sub">ความกลัว ${pct(c.fear)} · ความอยากรู้ ${pct(c.curious)}` +
+         `${c.fear >= balance.pet.deceitFearAt ? " · <b>มันเริ่มรอให้ท่านหันหลังก่อน</b>" : ""}</div>`;
+    if (s.deceits > 0)
+      h += `<div class="sub">แอบทำตอนท่านไม่ได้มอง ${s.deceits} ครั้ง</div>`;
     for (const k of Object.keys(c.genes) as (keyof typeof c.genes)[]) {
       const v = c.genes[k];
       h += `<div class="grow-row"><em>${GENE_NAME[k]}</em>

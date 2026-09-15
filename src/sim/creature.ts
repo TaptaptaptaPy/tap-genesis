@@ -37,7 +37,7 @@ export function makeCreature(s: GameState, genes: Genes, w: Weights, gen: number
   const c: Creature = {
     x: home.x + 1.5, y: home.y + 1.5, gen, genes, w, mem: {}, vmem: {},
     energy: 0.85, age: 0, act: null, tgt: null, lastAct: null, lastTile: -1, fbTimer: 0,
-    eaten: 0, served: 0, alive: true, mood: 0, blink: 0, respawnIn: 0, petCd: 0, lastVillage: -1, intent: null, intentTicks: 0,
+    eaten: 0, served: 0, alive: true, mood: 0, blink: 0, fear: 0, curious: 0, hiding: null, respawnIn: 0, petCd: 0, lastVillage: -1, intent: null, intentTicks: 0,
     bond: 0.3, grow: 0, cmd: null, need: "content", idleTicks: 0, facing: 0,
   };
   const t = tileAt(s.tiles, Math.round(c.x), Math.round(c.y));
@@ -143,12 +143,44 @@ function startAction(s: GameState, c: Creature, rng: Rng) {
     }
   }
   const a = chooseAction(s, c, rng);
+
+  // การหลอกลวง — ปลายทางของการลงโทษหนักเกินไป
+  //
+  // ใน B&W การตีซ้ำๆ ไม่ได้สอนให้เลิกทำ มันสอนให้ *รอ* ให้พระเจ้าละสายตาก่อน
+  // สัตว์ที่กลัวมากพอจะเก็บสิ่งที่อยากทำไว้ใน `hiding` แล้วเดินไปทำอย่างอื่นให้ดู
+  // พอพระเจ้าเลิกมอง มันถึงค่อยไปทำสิ่งนั้นจริง
+  //
+  // นี่คือกลไกเดียวในเกมที่ทำให้ "เลี้ยงด้วยความกลัว" มีราคาที่จับต้องได้
+  // ไม่ใช่แค่ตัวเลข align ที่ลดลง — มันแปลว่าท่านไม่รู้อีกต่อไปว่าสัตว์ของท่านทำอะไรอยู่
+  if (c.fear >= P.deceitFearAt) {
+    const watched = s.attention > 0;
+    if (watched && a !== "wander" && rng() < P.deceitChance * c.fear) {
+      c.hiding = a;
+      c.intent = null; c.intentTicks = 0;
+      c.act = "wander";
+      c.tgt = randLand(s, c, rng);
+      return;
+    }
+    if (!watched && c.hiding) {
+      const k = c.hiding;
+      c.hiding = null;
+      s.deceits++;
+      c.intent = null; c.intentTicks = 0;
+      c.act = k;
+      const v = nearestVillage(s, c.x, c.y);
+      c.tgt = k === "forage" ? (bestFood(s, c, 3, rng) ?? randLand(s, c, rng))
+            : v ? { x: v.x, y: v.y } : randLand(s, c, rng);
+      return;
+    }
+  }
+
   // ลังเลก่อนลงมือ — ผู้เล่นได้เห็นว่ามันกำลังจะทำอะไร แล้วเข้าไปห้ามทัน
   // เดิมระบบสอนทั้งระบบขึ้นกับหน้าต่าง 3 วินาที *หลัง* มันทำไปแล้ว
   // แปลว่าเราสอนได้แค่ "ตัดสินย้อนหลัง" ไม่เคยได้ "เข้าไปห้าม" ซึ่งคนละเรื่องกัน
+  // สัตว์ที่กลัวลังเลนานกว่า เพราะมันไม่แน่ใจว่าจะโดนอะไรอีก
   if (c.intent !== a) {
     c.intent = a;
-    c.intentTicks = Math.round(P.intentTicks + P.intentPerBond * c.bond);
+    c.intentTicks = Math.round((P.intentTicks + P.intentPerBond * c.bond) * (1 + c.fear));
     return;
   }
   if (c.intentTicks > 0) { c.intentTicks--; return; }
@@ -234,10 +266,22 @@ export function burst(s: GameState, x: number, y: number, color: string, rng: Rn
 // ───────────────────────── การสอน ─────────────────────────
 
 /** สอนสัตว์: ปรับน้ำหนักของ "การกระทำล่าสุด" และผูกคำตัดสินเข้ากับ "สถานที่" ที่มันทำด้วย */
+/** เรียนรู้ได้เร็วแค่ไหนในตอนนี้
+ *
+ *  ปัญญาเป็นฐาน แต่สภาพจิตใจเป็นตัวคูณ — ใน B&W ความกลัวขวางการเรียนรู้
+ *  และความอยากรู้อยากเห็นเร่งมัน สัตว์ที่โดนตีจนกลัวจะสอนอะไรไม่เข้าอีกเลย
+ *  ซึ่งเป็นเหตุผลว่าทำไม "ลงโทษอย่างเดียว" ถึงไม่ใช่วิธีเล่นที่ได้ผล ไม่ใช่แค่ใจร้าย */
+export function learnRate(c: Creature): number {
+  const base = C.learnBase + C.learnPerIntel * c.genes.intel;
+  const fearMul = 1 - (1 - P.fearLearnFloor) * c.fear;
+  const curiousMul = 1 + P.curiousLearnBonus * c.curious;
+  return base * fearMul * curiousMul;
+}
+
 export function teach(s: GameState, sign: 1 | -1, rng: Rng, log: (m: string) => void): boolean {
   const c = s.creature;
   if (!c.alive || !c.lastAct || c.fbTimer <= 0) { log("ยังไม่มีสิ่งใดให้ตัดสิน"); return false; }
-  const lr = C.learnBase + C.learnPerIntel * c.genes.intel;
+  const lr = learnRate(c);
   const k = c.lastAct;
   c.w[k] = clamp(c.w[k] + sign * lr, 0.05, 3);
   remember(c, c.lastTile, sign, M.teachPlaceWeight);
@@ -245,6 +289,12 @@ export function teach(s: GameState, sign: 1 | -1, rng: Rng, log: (m: string) => 
   // ไม่ใช่จำแค่พิกัด — ชมตอนช่วยหมู่บ้าน ก. แล้วมันจะลำเอียงไปช่วย ก. อีก
   if (c.lastVillage >= 0) rememberVillage(c, c.lastVillage, sign);
   c.bond = clamp(c.bond + (sign > 0 ? P.bondPerPraise : P.bondPerScold), 0, 1);
+  if (sign > 0) {
+    c.curious = clamp(c.curious + P.curiousPerPraise, 0, 1);
+    c.fear = clamp(c.fear + P.fearPerStroke, 0, 1);
+  } else {
+    c.fear = clamp(c.fear + P.fearPerSmack, 0, 1);
+  }
   c.mood = sign; c.fbTimer = 0;
   burst(s, c.x, c.y, sign > 0 ? "#d9a437" : "#9a3030", rng);
   log(sign > 0 ? `ท่านพอใจที่มัน${ACTION_NAME[k]}` : `ท่านลงโทษที่มัน${ACTION_NAME[k]}`);
@@ -269,8 +319,10 @@ export function stroke(s: GameState, rng: Rng, log: (m: string) => void): boolea
   // ลูบตอนมันกำลังลังเล = อนุญาตให้ทำ มันจะมั่นใจขึ้นและทำเร็วขึ้นครั้งหน้า
   if (c.intent) {
     const k = c.intent;
-    c.w[k] = clamp(c.w[k] + (C.learnBase + C.learnPerIntel * c.genes.intel) * 0.8, 0.05, 3);
+    c.w[k] = clamp(c.w[k] + learnRate(c) * 0.8, 0.05, 3);
     c.intentTicks = 0;
+    c.curious = clamp(c.curious + P.curiousPerPraise * 0.6, 0, 1);
+    c.fear = clamp(c.fear + P.fearPerStroke, 0, 1);
     c.bond = clamp(c.bond + P.strokeBond * (1 - c.bond), 0, 1);
     c.mood = 1;
     burst(s, c.x, c.y, "#e8c98a", rng);
@@ -283,6 +335,8 @@ export function stroke(s: GameState, rng: Rng, log: (m: string) => void): boolea
 
   // ยิ่งผูกพันแล้ว การลูบเพิ่มได้น้อยลง — ความไว้ใจซื้อด้วยการลูบรัวๆ ไม่ได้
   c.bond = clamp(c.bond + P.strokeBond * (1 - c.bond), 0, 1);
+  // การลูบเปล่าๆ ปลอบให้หายกลัวได้ ซึ่งเป็นทางเดียวที่จะกู้สัตว์ที่ถูกตีมาเกินกลับมา
+  c.fear = clamp(c.fear + P.fearPerStroke, 0, 1);
   c.mood = 1; c.fbTimer = 0;
   burst(s, c.x, c.y, "#e8c98a", rng);
   log("ท่านลูบหัวมัน");
@@ -304,7 +358,8 @@ export function smack(s: GameState, rng: Rng, log: (m: string) => void): boolean
   // นี่คือความต่างระหว่าง "ดุทีหลัง" กับ "ห้ามไว้ก่อน" ซึ่งอย่างหลังสอนได้ตรงกว่ามาก
   if (c.intent) {
     const k = c.intent;
-    c.w[k] = clamp(c.w[k] - (C.learnBase + C.learnPerIntel * c.genes.intel) * 1.4, 0.05, 3);
+    c.w[k] = clamp(c.w[k] - learnRate(c) * 1.4, 0.05, 3);
+    c.fear = clamp(c.fear + P.fearPerSmack, 0, 1);
     if (c.lastVillage >= 0) rememberVillage(c, c.lastVillage, -0.6);
     c.intent = null; c.intentTicks = 0; c.act = null; c.tgt = null;
     c.bond = clamp(c.bond + P.smackBond * 0.5, 0, 1);
@@ -317,6 +372,9 @@ export function smack(s: GameState, rng: Rng, log: (m: string) => void): boolean
   if (c.lastAct && c.fbTimer > 0) return teach(s, -1, rng, log);
 
   c.bond = clamp(c.bond + P.smackBond, 0, 1);
+  // ตีทั้งที่มันไม่ได้ทำอะไร กลัวหนักกว่าตีตอนทำผิดจริง เพราะมันไม่รู้ว่าโดนเพราะอะไร
+  // นี่คือทางที่เร็วที่สุดที่จะได้สัตว์ที่กลัวเราจนสอนไม่ได้ และเกมปล่อยให้ทำได้จริง
+  c.fear = clamp(c.fear + P.fearPerSmack * P.fearBlindMult, 0, 1);
   // ไม่รู้ว่าโดนเพราะอะไร จำได้แค่ว่าตรงนี้ไม่ปลอดภัย
   remember(c, Math.floor(c.y) * balance.world.W + Math.floor(c.x), -1, P.smackFearWeight);
   c.mood = -1; c.fbTimer = 0;
@@ -334,7 +392,7 @@ export function watchMiracle(s: GameState, dark: boolean, cx: number, cy: number
   if (!c.alive) return false;
   const I = balance.imitate;
   if (Math.hypot(c.x - cx, c.y - cy) > I.watchRadius) return false;
-  const lr = I.learnRate;
+  const lr = I.learnRate * (learnRate(c) / (C.learnBase + C.learnPerIntel * c.genes.intel));
   const nudge = (k: keyof Weights, amt: number) => { c.w[k] = clamp(c.w[k] + amt, 0.05, 3); };
   if (dark) { nudge("raid", lr); nudge("help", -lr * 0.5); }
   else { nudge("help", lr); nudge("worship", lr * 0.5); nudge("raid", -lr * 0.5); }
@@ -421,6 +479,9 @@ export function stepCreature(s: GameState, rng: Rng, log: (m: string) => void): 
   if (c.mood) c.mood *= 0.94;
   if (c.cmd) { c.cmd.ticks--; if (c.cmd.ticks <= 0) c.cmd = null; }
   c.bond *= P.bondDecayPerTick;
+  c.fear *= P.fearDecayPerTick;
+  c.curious *= P.curiousDecayPerTick;
+  if (s.attention > 0) s.attention--;
   decayMemory(c);
 
   const t = tileAt(s.tiles, Math.round(c.x), Math.round(c.y));

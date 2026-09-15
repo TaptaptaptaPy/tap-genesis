@@ -178,6 +178,11 @@ function divine(g: Game, persona: Persona, st: GodStats, log: (m: string) => voi
   const s = g.state;
   if (s.dead) return;
 
+  // ผู้เล่นจำลอง "มอง" อยู่เฉพาะตอนที่มันลงมือทำอะไร เหมือนคนจริงที่ไม่ได้จ้องทั้งวัน
+  // ถ้าตั้งให้มองตลอด ระบบการแอบทำจะไม่มีวันถูกเดินผ่านเลย
+  if (s.tick % GOD.castEveryTicks === 0 || s.tick % GOD.touchEveryTicks === 0)
+    s.attention = balance.pet.attentionTicks;
+
   // สอนสัตว์ก่อน — หน้าต่างตัดสินเปิดแค่ไม่กี่ tick ถ้ารอรอบร่ายคาถาจะหมดเวลา
   const c = s.creature;
   if (s.tick % GOD.teachEveryTicks === 0 && c.alive && c.lastAct && c.fbTimer > 0) {
@@ -285,6 +290,8 @@ interface Outcome {
   dead: boolean; starved: boolean; year: number; overflow: number;
   won: boolean; reign: string;
   combos: number; priests: number;
+  /** สภาพจิตใจของสัตว์ตอนจบ และกี่ครั้งที่มันรอให้พระเจ้าละสายตาก่อนค่อยทำ */
+  fear: number; curious: number; deceits: number;
   drift: string; disasters: string; god: GodStats;
 }
 
@@ -325,6 +332,7 @@ function runWorld(seed: number, persona: Persona): Outcome {
     fit: s.best?.fit ?? 0, dead: s.dead, overflow,
     won: s.won, reign: computeReign(s).title,
     combos: s.combos,
+    fear: s.creature.fear, curious: s.creature.curious, deceits: s.deceits,
     priests: s.villages.reduce((n, v) => n + v.folk.reduce((m, f) => m + (f.priest ? 1 : 0), 0), 0),
     starved: s.villages.some((v) => v.needs.food < 0.5), year: s.year,
     drift: GENES.map((k) => `${GENE_NAME[k]} ${gen0[k].toFixed(2)}→${s.creature.genes[k].toFixed(2)}`).join("  "),
@@ -456,6 +464,19 @@ const smackTotal = personas.reduce((n, p) => n + all[p].reduce((m, o) => m + o.g
 console.log(`มือลูบและตีได้จริงไหม: ลูบรวม ${strokeTotal} ครั้ง · ตีรวม ${smackTotal} ครั้ง`);
 
 const comboTotal = personas.reduce((n, p) => n + all[p].reduce((m, o) => m + o.combos, 0), 0);
+const avgOf = (p: Persona, f: (o: Outcome) => number) =>
+  all[p].reduce((m, o) => m + f(o), 0) / Math.max(1, all[p].length);
+const deceitOf = (p: Persona) => all[p].reduce((m, o) => m + o.deceits, 0);
+console.log(`ใจของสัตว์เป็นยังไง: เมตตา กลัว ${avgOf("kind", (o) => o.fear).toFixed(2)}` +
+            ` อยากรู้ ${avgOf("kind", (o) => o.curious).toFixed(2)} แอบทำ ${deceitOf("kind")} ครั้ง` +
+            ` · พิโรธ กลัว ${avgOf("wrath", (o) => o.fear).toFixed(2)}` +
+            ` อยากรู้ ${avgOf("wrath", (o) => o.curious).toFixed(2)} แอบทำ ${deceitOf("wrath")} ครั้ง`);
+if (avgOf("wrath", (o) => o.fear) <= avgOf("kind", (o) => o.fear))
+  console.log("เตือน: เลี้ยงด้วยการตีแล้วสัตว์ไม่ได้กลัวกว่าเลี้ยงด้วยการลูบ ระบบความกลัวไม่ทำงาน");
+if (deceitOf("wrath") === 0)
+  console.log("เตือน: ไม่มีสัตว์ตัวไหนแอบทำเลยสักครั้ง การลงโทษหนักเกินยังไม่มีราคาที่จับต้องได้");
+if (deceitOf("kind") > deceitOf("wrath"))
+  console.log("เตือน: เลี้ยงด้วยความรักแล้วมันแอบทำมากกว่าเลี้ยงด้วยความกลัว ซึ่งกลับหัวกลับหาง");
 const priestTotal = personas.reduce((n, p) => n + all[p].reduce((m, o) => m + o.priests, 0), 0);
 console.log(`คาถาคุยกันจริงไหม: ผลร่วมเกิดรวม ${comboTotal} ครั้ง · นักบวชที่เกิดจากมือ ${priestTotal} คน`);
 if (comboTotal === 0) console.log("  ← ไม่มีผลร่วมของคาถาเกิดขึ้นเลย ระบบนี้ไม่ได้ถูกทดสอบ");

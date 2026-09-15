@@ -88,6 +88,9 @@ cv.addEventListener("pointerdown", (e) => {
   // บาง pointer (เช่นที่ถูกยิงจากเครื่องมืออัตโนมัติ) ทำให้ setPointerCapture โยน error
   // ถ้าไม่ดักไว้ pointerdown จะตายกลางคันและการแตะครั้งนั้นหายไปทั้งครั้ง
   unlockAudio(); bgm.unlock();
+  // พระเจ้ากำลังมองอยู่ — สัตว์ที่กลัวจะไม่ทำสิ่งที่เคยโดนห้ามตอนนี้ ดู src/sim/creature.ts
+  // ชั้นหน้าจอเป็นคนบอก sim ว่ามีคนดูอยู่ เพราะ sim ไม่รู้จักเมาส์หรือกล้อง
+  game.state.attention = balance.pet.attentionTicks;
   try { cv.setPointerCapture(e.pointerId); } catch { /* ไม่จำเป็นต้องจับ pointer ก็เล่นได้ */ }
   const p = localPos(e);
   pointers.set(e.pointerId, p);
@@ -103,6 +106,7 @@ cv.addEventListener("pointerdown", (e) => {
 });
 
 cv.addEventListener("pointermove", (e) => {
+  if (pointers.size > 0) game.state.attention = balance.pet.attentionTicks;
   const p = localPos(e);
   if (pointers.has(e.pointerId)) pointers.set(e.pointerId, p);
 
