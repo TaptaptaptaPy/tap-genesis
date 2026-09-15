@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import balance from "../../data/balance.json";
+import { driftClouds, makeClouds, type CloudSky } from "./clouds";
 
 const { W, H } = balance.world;
 
@@ -31,10 +32,13 @@ export class World3D {
   private readonly hemiDay = new THREE.Color(0x9ec4dc);
   private readonly hemiNight = new THREE.Color(0x46618f);
   private readonly moon = new THREE.Color(0x9fb8e8);
+  private readonly cloudNight = new THREE.Color(0x3a4460);
   private readonly sunNoon = new THREE.Color(0xfff2d8);
   private readonly sunLow = new THREE.Color(0xffb066);
   private hemi!: THREE.HemisphereLight;
   private skyMat!: THREE.ShaderMaterial;
+  /** เมฆ — ใช้พื้นผิวก้อนเดียวกับเงาเมฆบนพื้น เพื่อให้เงาตรงกับก้อนที่เห็นจริง */
+  readonly clouds: CloudSky = makeClouds();
 
   constructor(private canvas: HTMLCanvasElement) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
@@ -83,6 +87,11 @@ export class World3D {
         glow: { value: new THREE.Color(0xffd9a0) },
         sunDir: { value: new THREE.Vector3(0, 1, 0) },
         glowStrength: { value: 0.5 },
+        cloudMap: { value: this.clouds.map },
+        cloudOffset: { value: this.clouds.offset },
+        cloudScale: { value: this.clouds.scale },
+        cloudLight: { value: new THREE.Color(0xffffff) },
+        cloudAmount: { value: 0.55 },
       },
       vertexShader: `varying vec3 vDir;
         void main() {
@@ -91,11 +100,22 @@ export class World3D {
         }`,
       fragmentShader: `uniform vec3 zenith; uniform vec3 horizon; uniform vec3 glow;
         uniform vec3 sunDir; uniform float glowStrength;
+        uniform sampler2D cloudMap; uniform vec2 cloudOffset;
+        uniform float cloudScale; uniform vec3 cloudLight; uniform float cloudAmount;
         varying vec3 vDir;
         void main() {
           vec3 d = normalize(vDir);
           float h = clamp(d.y * 0.5 + 0.5, 0.0, 1.0);
           vec3 c = mix(horizon, zenith, pow(h, 0.65));
+
+          // ฉายทิศทางที่มองอยู่ขึ้นไปบนระนาบเมฆ แล้วอ่านพื้นผิวก้อนเดียวกับที่ใช้ทำเงาบนพื้น
+          // ทำในเชเดอร์ของโดม ไม่ได้ใช้ระนาบลอย เพราะกล้องเกมนี้ก้มลงเกือบตลอด
+          // ระนาบเมฆจะไปอยู่หลังกล้องแทบทุกมุม
+          float up = max(d.y, 0.035);
+          vec2 cuv = (d.xz / up) * 5.5 * cloudScale + cloudOffset;
+          float cl = texture2D(cloudMap, cuv).r;
+          cl *= smoothstep(0.015, 0.20, d.y);      // เมฆต้องไม่ไหลลงไปใต้ขอบฟ้า
+          c = mix(c, cloudLight, clamp(cl, 0.0, 1.0) * cloudAmount);
           // แสงฟุ้งรอบดวงอาทิตย์ — ทำให้รู้ว่าตอนนี้แดดมาจากทางไหนโดยไม่ต้องวาดดวงอาทิตย์
           float s = max(0.0, dot(d, normalize(sunDir)));
           c += glow * pow(s, 8.0) * glowStrength;
@@ -175,6 +195,11 @@ export class World3D {
     (this.skyMat.uniforms.sunDir.value as THREE.Vector3)
       .copy(this.sun.position).sub(this.center).normalize();
     this.skyMat.uniforms.glowStrength.value = night ? 0.12 : 0.22 + 0.4 * (1 - d);
+    // เมฆกลางวันขาว ตอนเย็นรับแสงส้ม กลางคืนเป็นเงาเทาเข้ม
+    (this.skyMat.uniforms.cloudLight.value as THREE.Color)
+      .copy(this.cloudNight).lerp(this.sun.color, d);
+    this.skyMat.uniforms.cloudAmount.value = 0.30 + 0.32 * d;
+    this.clouds.shadow.value = 0.10 + 0.26 * d;
     // หมอกต้องเป็นสีขอบฟ้า ไม่ใช่สีบนหัว ไม่งั้นเกาะฝั่งไกลจะจางไปคนละสีกับฟ้าที่อยู่หลังมัน
     (this.scene.fog as THREE.Fog).color.copy(horizon);
     this.renderer.toneMappingExposure = 0.96 + 0.14 * d;
@@ -206,6 +231,10 @@ export class World3D {
     this.sun.target.updateMatrixWorld();
     if (this.shake > 0) this.shake = Math.max(0, this.shake - dt * 22);
   }
+
+  /** ลมพัดเมฆไปเรื่อยๆ — เรียกทุกเฟรมพร้อมกับ dt ของเกม (คูณความเร็วมาแล้ว)
+   *  ใช้ dt ของเกมไม่ใช่นาฬิกาจริง กด 4× แล้วเมฆต้องไหลเร็วขึ้นด้วย */
+  driftSky(dt: number) { driftClouds(this.clouds, dt); }
 
   render() { this.renderer.render(this.scene, this.camera); }
 

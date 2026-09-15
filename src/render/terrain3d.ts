@@ -6,8 +6,10 @@ import { HEIGHT_SCALE, SEA, worldY } from "./world3d";
 import balance from "../../data/balance.json";
 import models from "../../data/models.json";
 import { bakedGeometry } from "./gltf";
+import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { villageFootprint } from "./layout";
 import { Water3D } from "./water";
+import { applyCloudShadow, applyWind, type CloudSky } from "./clouds";
 
 const { W, H } = balance.world;
 
@@ -63,10 +65,13 @@ export class Terrain3D {
    *  ระหว่างรอ ใช้กรวยกับทรงสิบสองหน้าไปก่อน เกาะจะได้ไม่โล่งตอนเปิดเกม */
   private propGeo: { tree?: THREE.BufferGeometry; rock?: THREE.BufferGeometry } = {};
   private lastState: GameState | null = null;
+  /** เวลาของลม เดินตาม dt ของเกม ไม่ใช่นาฬิกาจริง — กด 4× แล้วลมต้องแรงขึ้นด้วย */
+  private wind = { value: 0 };
+  private grass?: THREE.InstancedMesh;
   readonly propsReady: Promise<void>;
   private water: Water3D;
 
-  constructor(s: GameState) {
+  constructor(s: GameState, private sky?: CloudSky) {
     const vw = W + 1, vh = H + 1;
     const pos = new Float32Array(vw * vh * 3);
     this.colors = new Float32Array(vw * vh * 3);
@@ -85,6 +90,7 @@ export class Terrain3D {
     this.geo.setIndex(idxs);
 
     const mat = new THREE.MeshLambertMaterial({ vertexColors: true });
+    if (sky) applyCloudShadow(mat, sky);
     this.ground = new THREE.Mesh(this.geo, mat);
     this.ground.receiveShadow = true;
     this.ground.castShadow = true;
@@ -132,6 +138,7 @@ export class Terrain3D {
       this.version = s.terrainVersion;
     }
     this.water.update(s, time, daylight);
+    this.wind.value = time * 0.001;
   }
 
   private refresh(s: GameState, rebuildProps: boolean) {
@@ -166,6 +173,8 @@ export class Terrain3D {
     })();
     const tmat = new THREE.MeshLambertMaterial(
       this.propGeo.tree ? { vertexColors: true } : { color: 0x2c5c34 });
+    if (this.sky) applyCloudShadow(tmat, this.sky);
+    if (this.propGeo.tree) applyWind(tmat, this.wind, 0.05);
     const trees = new THREE.InstancedMesh(tgeo, tmat, Math.max(1, treeTiles.length * perTile));
     trees.castShadow = true;
     const m = new THREE.Matrix4(), q = new THREE.Quaternion(), sc = new THREE.Vector3();
@@ -193,6 +202,7 @@ export class Terrain3D {
     const rgeo = this.propGeo.rock ?? new THREE.DodecahedronGeometry(0.26, 0);
     const rmat = new THREE.MeshLambertMaterial(
       this.propGeo.rock ? { vertexColors: true } : { color: 0x6b6a66, flatShading: true });
+    if (this.sky) applyCloudShadow(rmat, this.sky);
     const rocks = new THREE.InstancedMesh(rgeo, rmat, Math.max(1, rockTiles.length));
     rocks.castShadow = true;
     let rn = 0;
@@ -210,6 +220,59 @@ export class Terrain3D {
     rocks.instanceMatrix.needsUpdate = true;
     this.rocks = rocks;
     this.group.add(rocks);
+
+    this.buildGrass(s, clearOf);
+  }
+
+  /** หญ้า — กระจุกเล็กๆ บนช่องที่เป็นทุ่ง ทำให้พื้นไม่ใช่สีทาเรียบ
+   *  สามใบไขว้กันต่อหนึ่งกระจุก ถูกที่สุดที่ยังดูเหมือนหญ้าจากมุมกล้องนี้
+   *  ไหวตามลมชุดเดียวกับต้นไม้ ถ้าต้นไม้ไหวแต่หญ้านิ่งจะดูเหมือนป่าพลาสติก */
+  private buildGrass(s: GameState, clearOf: (t: Tile) => boolean) {
+    if (this.grass) { this.group.remove(this.grass); this.grass.dispose(); }
+
+    const blade = new THREE.PlaneGeometry(0.11, 0.15);
+    blade.translate(0, 0.075, 0);
+    const parts: THREE.BufferGeometry[] = [];
+    for (const a of [0, Math.PI / 3, (Math.PI * 2) / 3]) {
+      const g = blade.clone();
+      g.rotateY(a);
+      parts.push(g);
+    }
+    const tuft = mergeGeometries(parts, false)!;
+    blade.dispose();
+
+    const tiles = s.tiles.filter((t) =>
+      (t.biome === "GRASS" || t.biome === "LUSH") && t.fert > 0.25 && clearOf(t));
+    const per = 6;
+    // สีต้องใกล้สีทุ่งมาก ไม่งั้นจากระยะกล้องปกติมันจะอ่านออกมาเป็นเศษดินสีเข้มกระจายเต็มเกาะ
+    // หญ้ามีหน้าที่เพิ่มผิวสัมผัสตอนซูมเข้าไปใกล้ ไม่ใช่เพิ่มจุดด่างตอนมองทั้งเกาะ
+    const mat = new THREE.MeshLambertMaterial({
+      color: 0x7fa85c, side: THREE.DoubleSide, transparent: true, opacity: 0.8,
+    });
+    if (this.sky) applyCloudShadow(mat, this.sky);
+    applyWind(mat, this.wind, 0.10);
+
+    const mesh = new THREE.InstancedMesh(tuft, mat, Math.max(1, tiles.length * per));
+    mesh.castShadow = false;
+    mesh.receiveShadow = false;
+    const m = new THREE.Matrix4(), q = new THREE.Quaternion(), sc = new THREE.Vector3();
+    let n = 0;
+    for (const t of tiles) {
+      for (let k = 0; k < per; k++) {
+        const hx = frac(t.x * 21.7 + t.y * 13.1 + k * 4.3);
+        const hz = frac(t.x * 8.9 + t.y * 27.3 + k * 6.1);
+        const px = t.x + 0.1 + hx * 0.8, pz = t.y + 0.1 + hz * 0.8;
+        const scl = 0.75 + frac(t.x * 3.1 + t.y * 5.9 + k) * 0.6;
+        sc.set(scl, scl * (0.8 + t.fert * 0.6), scl);
+        q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), hx * 6.28);
+        m.compose(new THREE.Vector3(px, worldY(sampleH(s, px, pz)), pz), q, sc);
+        mesh.setMatrixAt(n++, m);
+      }
+    }
+    mesh.count = n;
+    mesh.instanceMatrix.needsUpdate = true;
+    this.grass = mesh;
+    this.group.add(mesh);
   }
 }
 
