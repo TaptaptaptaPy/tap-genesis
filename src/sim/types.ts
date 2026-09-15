@@ -72,6 +72,9 @@ export interface Creature {
   w: Weights;
   /** ความจำสถานที่: index ของช่อง -> ค่าดี/แย่ (-1..+1) */
   mem: Record<number, number>;
+  /** ความทรงจำเรื่อง "หมู่บ้าน" — คนละชนิดกับ `mem` ที่จำเรื่อง "ช่อง"
+   *  จำช่องได้ = รู้ว่าตรงไหนมีของกิน · จำหมู่บ้านได้ = รู้ว่าช่วยใครแล้วพระเจ้าพอใจ */
+  vmem: Record<number, number>;
   energy: number;
   age: number;
   act: ActionId | null;
@@ -81,6 +84,12 @@ export interface Creature {
   fbTimer: number; // หน้าต่างเวลาที่พระเจ้ายังสอนได้ (tick)
   /** กันลูบรัวๆ — นับถอยหลังเป็น tick */
   petCd: number;
+  /** หมู่บ้านที่เกี่ยวข้องกับสิ่งที่เพิ่งทำ — ใช้ผูกคำชม/คำดุเข้ากับ "คน" ไม่ใช่แค่ "ที่" */
+  lastVillage: number;
+  /** สิ่งที่มันกำลังจะทำ แต่ยังไม่ได้ลงมือ — ผู้เล่นเห็นแล้วเข้าไปห้ามทัน */
+  intent: ActionId | null;
+  /** เหลืออีกกี่ tick ก่อนจะลงมือจริง */
+  intentTicks: number;
   eaten: number;
   served: number;
   alive: boolean;

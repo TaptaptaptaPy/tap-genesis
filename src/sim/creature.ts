@@ -35,9 +35,9 @@ export const maxAge = (c: Creature) =>
 export function makeCreature(s: GameState, genes: Genes, w: Weights, gen: number, rng: Rng): Creature {
   const home = s.villages[0] ?? { x: balance.world.W / 2, y: balance.world.H / 2 };
   const c: Creature = {
-    x: home.x + 1.5, y: home.y + 1.5, gen, genes, w, mem: {},
+    x: home.x + 1.5, y: home.y + 1.5, gen, genes, w, mem: {}, vmem: {},
     energy: 0.85, age: 0, act: null, tgt: null, lastAct: null, lastTile: -1, fbTimer: 0,
-    eaten: 0, served: 0, alive: true, mood: 0, blink: 0, respawnIn: 0, petCd: 0,
+    eaten: 0, served: 0, alive: true, mood: 0, blink: 0, respawnIn: 0, petCd: 0, lastVillage: -1, intent: null, intentTicks: 0,
     bond: 0.3, grow: 0, cmd: null, need: "content", idleTicks: 0, facing: 0,
   };
   const t = tileAt(s.tiles, Math.round(c.x), Math.round(c.y));
@@ -56,6 +56,15 @@ export function remember(c: Creature, tileIndex: number, value: number, weight =
   c.mem[tileIndex] = clamp(cur + (value - cur) * M.learnRate * weight, -1, 1);
 }
 export const recall = (c: Creature, tileIndex: number) => c.mem[tileIndex] ?? 0;
+
+/** จำได้ว่าเคยทำอะไรกับหมู่บ้านนี้แล้วพระเจ้าว่ายังไง
+ *  ความทรงจำเรื่องช่องบอกว่า "ตรงนั้นมีของกิน" ความทรงจำเรื่องหมู่บ้านบอกว่า "คนกลุ่มนั้นสำคัญ"
+ *  ซึ่งเป็นคนละเรื่องกันโดยสิ้นเชิง และเป็นเหตุผลที่สัตว์ควรมีทั้งสองอย่าง */
+export function rememberVillage(c: Creature, villageId: number, value: number, weight = 1) {
+  const cur = c.vmem[villageId] ?? 0;
+  c.vmem[villageId] = clamp(cur + (value - cur) * M.villageLearn * weight, -1, 1);
+}
+export const recallVillage = (c: Creature, villageId: number) => c.vmem[villageId] ?? 0;
 
 function decayMemory(c: Creature) {
   const keys = Object.keys(c.mem);
@@ -117,6 +126,8 @@ function bestFood(s: GameState, c: Creature, r: number, rng: Rng) {
     if (known === 0) val *= 1 + M.curiosity * rng();
     const nv = nearestVillage(s, t.x, t.y);
     if (nv && Math.hypot(nv.x - t.x, nv.y - t.y) < C.farmAvoidRadius) val *= C.farmAvoidFactor;
+    // ลำเอียงไปทางหมู่บ้านที่เคยทำแล้วพระเจ้าพอใจ และเลี่ยงหมู่บ้านที่เคยโดนดุ
+    if (nv) val *= 1 + M.villageWeight * recallVillage(c, nv.id);
     if (val > bv) { bv = val; best = t; }
   }
   return best;
@@ -132,6 +143,16 @@ function startAction(s: GameState, c: Creature, rng: Rng) {
     }
   }
   const a = chooseAction(s, c, rng);
+  // ลังเลก่อนลงมือ — ผู้เล่นได้เห็นว่ามันกำลังจะทำอะไร แล้วเข้าไปห้ามทัน
+  // เดิมระบบสอนทั้งระบบขึ้นกับหน้าต่าง 3 วินาที *หลัง* มันทำไปแล้ว
+  // แปลว่าเราสอนได้แค่ "ตัดสินย้อนหลัง" ไม่เคยได้ "เข้าไปห้าม" ซึ่งคนละเรื่องกัน
+  if (c.intent !== a) {
+    c.intent = a;
+    c.intentTicks = Math.round(P.intentTicks + P.intentPerBond * c.bond);
+    return;
+  }
+  if (c.intentTicks > 0) { c.intentTicks--; return; }
+  c.intent = null;
   c.act = a;
   if (a === "forage") {
     const t = bestFood(s, c, 3 + Math.round(c.genes.intel * 4), rng);
@@ -196,6 +217,10 @@ function resolveAction(s: GameState, c: Creature, rng: Rng, log: (m: string) => 
 
   c.lastAct = a;
   c.lastTile = here;
+  // หมู่บ้านที่เกี่ยวข้องกับสิ่งที่เพิ่งทำ — บุก ช่วย หรือบูชา ล้วนผูกกับหมู่บ้านใดหมู่บ้านหนึ่ง
+  // ส่วนหาอาหารกับเดินเล่นไม่เกี่ยวกับใคร จึงเป็น -1
+  c.lastVillage = (a === "raid" || a === "help" || a === "worship")
+    ? (t?.village?.id ?? nearestVillage(s, c.x, c.y)?.id ?? -1) : -1;
   c.fbTimer = C.feedbackWindowSeconds / balance.time.tickSeconds;
   c.act = null; c.tgt = null;
 }
@@ -216,6 +241,9 @@ export function teach(s: GameState, sign: 1 | -1, rng: Rng, log: (m: string) => 
   const k = c.lastAct;
   c.w[k] = clamp(c.w[k] + sign * lr, 0.05, 3);
   remember(c, c.lastTile, sign, M.teachPlaceWeight);
+  // ถ้าสิ่งที่มันเพิ่งทำเกี่ยวกับหมู่บ้านใดหมู่บ้านหนึ่ง มันจะจำหมู่บ้านนั้นไปด้วย
+  // ไม่ใช่จำแค่พิกัด — ชมตอนช่วยหมู่บ้าน ก. แล้วมันจะลำเอียงไปช่วย ก. อีก
+  if (c.lastVillage >= 0) rememberVillage(c, c.lastVillage, sign);
   c.bond = clamp(c.bond + (sign > 0 ? P.bondPerPraise : P.bondPerScold), 0, 1);
   c.mood = sign; c.fbTimer = 0;
   burst(s, c.x, c.y, sign > 0 ? "#d9a437" : "#9a3030", rng);
@@ -238,6 +266,18 @@ export function stroke(s: GameState, rng: Rng, log: (m: string) => void): boolea
   if (c.petCd > 0) return false;
   c.petCd = P.strokeCooldownTicks;
 
+  // ลูบตอนมันกำลังลังเล = อนุญาตให้ทำ มันจะมั่นใจขึ้นและทำเร็วขึ้นครั้งหน้า
+  if (c.intent) {
+    const k = c.intent;
+    c.w[k] = clamp(c.w[k] + (C.learnBase + C.learnPerIntel * c.genes.intel) * 0.8, 0.05, 3);
+    c.intentTicks = 0;
+    c.bond = clamp(c.bond + P.strokeBond * (1 - c.bond), 0, 1);
+    c.mood = 1;
+    burst(s, c.x, c.y, "#e8c98a", rng);
+    log(`ท่านปล่อยให้มัน${ACTION_NAME[k]}`);
+    return true;
+  }
+
   // อยู่ในช่วงที่ตัดสินได้ = เป็นคำชมเต็มรูปแบบ ไม่ใช่แค่ลูบ
   if (c.lastAct && c.fbTimer > 0) return teach(s, 1, rng, log);
 
@@ -259,6 +299,20 @@ export function smack(s: GameState, rng: Rng, log: (m: string) => void): boolean
   if (!c.alive) return false;
   if (c.petCd > 0) return false;
   c.petCd = P.strokeCooldownTicks;
+
+  // ตีตอนมันกำลังจะทำอะไร = ห้ามไว้ทัน มันเลิกคิดและเรียนว่าอย่าทำอีก
+  // นี่คือความต่างระหว่าง "ดุทีหลัง" กับ "ห้ามไว้ก่อน" ซึ่งอย่างหลังสอนได้ตรงกว่ามาก
+  if (c.intent) {
+    const k = c.intent;
+    c.w[k] = clamp(c.w[k] - (C.learnBase + C.learnPerIntel * c.genes.intel) * 1.4, 0.05, 3);
+    if (c.lastVillage >= 0) rememberVillage(c, c.lastVillage, -0.6);
+    c.intent = null; c.intentTicks = 0; c.act = null; c.tgt = null;
+    c.bond = clamp(c.bond + P.smackBond * 0.5, 0, 1);
+    c.mood = -1;
+    burst(s, c.x, c.y, "#c8a04a", rng);
+    log(`ท่านห้ามไว้ทันก่อนที่มันจะ${ACTION_NAME[k]}`);
+    return true;
+  }
 
   if (c.lastAct && c.fbTimer > 0) return teach(s, -1, rng, log);
 
@@ -334,10 +388,17 @@ function reincarnate(s: GameState, rng: Rng, log: (m: string) => void) {
     w[k] = clamp(lerp(0.6, lerp(dead.w[k], best.w[k], 0.4), 0.75), 0.05, 3);
 
   const nc = makeCreature(s, genes, w, dead.gen + 1, rng);
-  for (const [k, v] of Object.entries(dead.mem)) nc.mem[k as unknown as number] = v * 0.5;
-  nc.bond = dead.bond * 0.6;
+
+  // สืบทอดได้มากแค่ไหนขึ้นกับปัญญาของรุ่นที่ตายไป ไม่ใช่ค่าคงที่
+  // สายพันธุ์ที่ฉลาดส่งต่อสิ่งที่เรียนมาได้มากกว่า — การเพาะปัญญาจึงมีความหมายจริง
+  // (เดิมเป็น 0.5 ตายตัว ปัญญาจึงมีผลแค่กับความเร็วในการเรียนของตัวมันเอง)
+  const keep = clamp(C.inheritBase + C.inheritPerIntel * dead.genes.intel, 0, 0.95);
+  for (const [k, v] of Object.entries(dead.mem)) nc.mem[k as unknown as number] = v * keep;
+  // ความทรงจำเรื่องหมู่บ้านก็ต้องส่งต่อ ไม่งั้นรุ่นใหม่ลืมว่าเคยช่วยใครมา
+  for (const [k, v] of Object.entries(dead.vmem)) nc.vmem[k as unknown as number] = v * keep;
+  nc.bond = dead.bond * (0.4 + keep * 0.4);
   s.creature = nc;
-  log(`สัตว์รุ่นที่ ${nc.gen} ลืมตาขึ้นมา จำสิ่งที่รุ่นก่อนเรียนไว้ได้ครึ่งหนึ่ง`);
+  log(`สัตว์รุ่นที่ ${nc.gen} ลืมตาขึ้นมา จำสิ่งที่รุ่นก่อนเรียนไว้ได้ ${Math.round(keep * 100)}%`);
 }
 
 function updateNeed(c: Creature) {

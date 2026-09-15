@@ -104,11 +104,15 @@ export class Hud {
 
     const c = s.creature;
     $("petFace").textContent = String(c.gen);
-    const act = c.act ? ACTION_NAME[c.act] : c.lastAct ? "เพิ่ง" + ACTION_NAME[c.lastAct] : "…";
+    // ความลังเลมาก่อนทุกอย่าง เพราะมันคือช่วงที่ผู้เล่นยังทำอะไรได้อยู่
+    const act = c.intent ? `กำลังจะ${ACTION_NAME[c.intent]}`
+              : c.act ? ACTION_NAME[c.act]
+              : c.lastAct ? "เพิ่ง" + ACTION_NAME[c.lastAct] : "…";
     const need = c.need === "content" ? "" : ` · ${CREATURE_NEED_NAME[c.need]}`;
     $("petAct").textContent = c.alive
       ? `รุ่นที่ ${c.gen} · ${act}${need}${c.cmd ? " · ทำตามคำสั่ง" : ""}`
       : "สิ้นชีพ · กำลังกลับชาติมาเกิด";
+    ($("petAct") as HTMLElement).classList.toggle("is-intent", !!c.intent && c.alive);
     ($("barE") as HTMLElement).style.width = c.energy * 100 + "%";
     ($("barA") as HTMLElement).style.width = (100 - Math.min(1, c.age / maxAge(c)) * 100) + "%";
     ($("barB") as HTMLElement).style.width = c.bond * 100 + "%";
@@ -137,7 +141,9 @@ export class Hud {
     }
     if (!text) {
       const c = s.creature;
-      if (c.alive && c.fbTimer > 0 && c.lastAct) {
+      if (c.alive && c.intent) {
+        text = `สัตว์ของท่านกำลังจะ${ACTION_NAME[c.intent]} — ลูบเพื่อปล่อย ตีเพื่อห้าม`;
+      } else if (c.alive && c.fbTimer > 0 && c.lastAct) {
         text = `สัตว์ของท่านเพิ่ง${ACTION_NAME[c.lastAct]} — ชมหรือตีได้ตอนนี้`;
       } else { el.classList.add("hidden"); return; }
     }

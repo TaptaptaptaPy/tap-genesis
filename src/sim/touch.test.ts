@@ -11,11 +11,15 @@ const warm = (ticks = 5) => {
   for (let i = 0; i < ticks; i++) stepTick(g);
   return g;
 };
-/** ล้างช่วงเวลาที่ตัดสินได้ ให้เหลือแค่ "ลูบเปล่าๆ" */
+/** ล้างทั้งความลังเลและช่วงเวลาที่ตัดสินได้ ให้เหลือแค่ "ลูบเปล่าๆ"
+ *  ตอนนี้สัตว์ลังเลก่อนลงมือทุกครั้ง ถ้าไม่ล้าง `intent` ด้วย
+ *  การลูบจะกลายเป็นการ "อนุญาต" ไม่ใช่การลูบเฉยๆ */
 const idle = (g: ReturnType<typeof createGame>) => {
   g.state.creature.lastAct = null;
   g.state.creature.fbTimer = 0;
   g.state.creature.petCd = 0;
+  g.state.creature.intent = null;
+  g.state.creature.intentTicks = 0;
 };
 
 /** ก่อนหน้านี้ความผูกพันขยับได้ทางเดียวคือผ่าน teach() ซึ่งใช้ได้เฉพาะตอนมีอะไรให้ตัดสิน
@@ -34,6 +38,7 @@ describe("ลูบและตี", () => {
   it("ลูบตอนมันเพิ่งทำอะไร นับเป็นคำชม — ความรักกับการสอนไม่ได้แยกกันเสมอ", () => {
     const g = warm();
     const c = g.state.creature;
+    c.intent = null;
     c.lastAct = "raid";
     c.fbTimer = 10;
     c.petCd = 0;
@@ -80,5 +85,41 @@ describe("ลูบและตี", () => {
     expect(stroke(g.state, rng(), quiet)).toBe(false);
     expect(smack(g.state, rng(), quiet)).toBe(false);
     void teach;
+  });
+});
+
+/** ความลังเลคือช่วงที่ผู้เล่นยังห้ามได้ทัน — ต่างจากการดุทีหลังโดยสิ้นเชิง */
+describe("ห้ามไว้ก่อน", () => {
+  it("ตีตอนมันกำลังจะทำ = ห้ามไว้ทัน มันเลิกคิดและเรียนว่าอย่าทำอีก", () => {
+    const g = warm(); idle(g);
+    const c = g.state.creature;
+    c.intent = "raid"; c.intentTicks = 3; c.act = "raid";
+    const before = c.w.raid;
+    expect(smack(g.state, rng(), quiet)).toBe(true);
+    expect(c.w.raid, "น้ำหนักของสิ่งที่ถูกห้ามต้องลด").toBeLessThan(before);
+    expect(c.intent, "ห้ามแล้วต้องเลิกคิด").toBeNull();
+    expect(c.act).toBeNull();
+  });
+
+  it("ลูบตอนมันกำลังจะทำ = อนุญาต มันมั่นใจขึ้น", () => {
+    const g = warm(); idle(g);
+    const c = g.state.creature;
+    c.intent = "help"; c.intentTicks = 3;
+    const before = c.w.help;
+    expect(stroke(g.state, rng(), quiet)).toBe(true);
+    expect(c.w.help).toBeGreaterThan(before);
+    expect(c.intentTicks, "อนุญาตแล้วต้องลงมือได้เลย").toBe(0);
+  });
+
+  it("ยิ่งผูกพันยิ่งลังเลนาน — มันแคร์ว่าเราจะว่ายังไง", () => {
+    const shy = createGame(4242), bold = createGame(4242);
+    for (let i = 0; i < 3; i++) { stepTick(shy); stepTick(bold); }
+    shy.state.creature.bond = 0.95;
+    bold.state.creature.bond = 0.05;
+    shy.state.creature.intent = null; bold.state.creature.intent = null;
+    shy.state.creature.act = null; bold.state.creature.act = null;
+    for (let i = 0; i < 2; i++) { stepTick(shy); stepTick(bold); }
+    expect(shy.state.creature.intentTicks)
+      .toBeGreaterThanOrEqual(bold.state.creature.intentTicks);
   });
 });
