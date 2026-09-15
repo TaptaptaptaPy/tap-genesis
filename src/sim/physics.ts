@@ -3,6 +3,7 @@ import { isWater } from "./biomes";
 import { setBiome, tileAt } from "./world";
 import { addAwe, faithCap, nearestVillage } from "./village";
 import { remember } from "./creature";
+import { nearestFolk, putFolk, takeFolk } from "./folk";
 import type { CarryKind, GameState, Projectile, Tile } from "./types";
 import balance from "../../data/balance.json";
 
@@ -46,25 +47,41 @@ export function grabAt(s: GameState, x: number, y: number, log: (m: string) => v
   if (kind === "tree") setBiome(s, t, "GRASS");
   else if (kind === "food") t.fert = Math.max(0, t.fert - 0.35);
   else if (kind === "folk" && t.village) {
-    // หยิบคนขึ้นมาคือเอาคนออกจากหมู่บ้านจริงๆ ไม่ใช่ภาพลวง
-    t.village.pop = Math.max(1, t.village.pop - 1);
+    // หยิบ "คนที่อยู่ใกล้มือที่สุด" ไม่ใช่คนนิรนามจากตัวเลขประชากร
+    const who = nearestFolk(t.village, x + 0.5, y + 0.5);
+    if (!who) { log("ไม่มีใครอยู่ตรงนั้น"); return null; }
+    takeFolk(t.village, who);
+    s.carryFolk = who;
     addAwe(t.village, 0.12);
+    log(`ท่านหยิบ${who.name}ขึ้นมา`);
+    if (kind === "folk") s.faith = Math.min(s.faith, faithCap(s));
+    s.carrying = kind;
+    s.carryFrom = { x, y };
+    return kind;
   }
-  // หยิบคนขึ้นมาแล้วผู้ศรัทธาลด เพดานศรัทธาก็ลดตาม ต้องตัดทันที
-  // ไม่งั้นจะมีช่วงที่ศรัทธาสูงกว่าเพดานจนกว่าจะถึง tick ถัดไป
-  if (kind === "folk") s.faith = Math.min(s.faith, faithCap(s));
   s.carrying = kind;
   s.carryFrom = { x, y };
   log(`ท่านหยิบ${CARRY_NAME[kind]}ขึ้นมา`);
   return kind;
 }
 
+/** ชื่อของสิ่งที่ถืออยู่ — ถ้าเป็นคนก็เรียกชื่อเขา ไม่ใช่เรียกว่า "ผู้คน" */
+export const carryLabel = (s: GameState) =>
+  s.carrying === "folk" && s.carryFolk ? s.carryFolk.name
+  : s.carrying ? CARRY_NAME[s.carrying] : "";
+
 /** วางคืนที่เดิมโดยไม่ขว้าง */
 export function dropCarry(s: GameState, log: (m: string) => void): void {
   if (!s.carrying) return;
-  log(`ท่านวาง${CARRY_NAME[s.carrying]}ลง`);
+  log(`ท่านวาง${carryLabel(s)}ลง`);
+  // คนที่วางลงต้องกลับเข้าหมู่บ้านที่ยกมา ไม่ใช่หายไปเฉยๆ
+  if (s.carryFolk && s.carryFrom) {
+    const t = tileAt(s.tiles, s.carryFrom.x, s.carryFrom.y);
+    if (t?.village) putFolk(t.village, s.carryFolk);
+  }
   s.carrying = null;
   s.carryFrom = null;
+  s.carryFolk = null;
 }
 
 /** ขว้างของที่ถืออยู่ไปยังช่องเป้าหมาย — วิถีเป็นพาราโบลา ไม่ใช่การเทเลพอร์ต */
@@ -93,9 +110,12 @@ export function throwTo(s: GameState, tx: number, ty: number, log: (m: string) =
     vz: (zEnd - z0 + 0.5 * P.gravity * flight * flight) / flight,
     age: 0,
   });
+  const who = s.carryFolk;
   s.carrying = null;
   s.carryFrom = null;
-  log(`ท่านขว้าง${CARRY_NAME[kind]}ออกไป`);
+  s.thrown[s.thrown.length - 1].folk = who;
+  s.carryFolk = null;
+  log(`ท่านขว้าง${who ? who.name : CARRY_NAME[kind]}ออกไป`);
   return true;
 }
 
@@ -128,10 +148,10 @@ function impact(s: GameState, p: Projectile, t: Tile | null, rng: Rng, log: (m: 
   if (water) {
     s.fx.push({ kind: "ripple", x: p.x, y: p.y, t: 0, life: 1.2 });
     if (p.kind === "folk") {
-      // ทิ้งคนลงทะเลมีราคาของมัน และทุกหมู่บ้านรู้
+      // ทิ้งคนลงทะเลมีราคาของมัน และทุกหมู่บ้านรู้ — และเขามีชื่อ
       s.align = clamp(s.align + P.folkDrownAlign, -1, 1);
       for (const v of s.villages) addAwe(v, P.folkDrownAwe * 0.5);
-      log("ท่านทิ้งผู้คนลงทะเล");
+      log(`ท่านทิ้ง${p.folk ? p.folk.name : "ผู้คน"}ลงทะเล`);
     } else log(`${CARRY_NAME[p.kind]}ตกลงกลางน้ำ`);
     return;
   }
@@ -165,16 +185,17 @@ function impact(s: GameState, p: Projectile, t: Tile | null, rng: Rng, log: (m: 
     case "folk": {
       const home = nearestVillage(s, p.x, p.y);
       const d = home ? Math.hypot(home.x + 0.5 - p.x, home.y + 0.5 - p.y) : 99;
+      const name = p.folk?.name ?? "ผู้คน";
       if (home && d <= P.folkLandRadius) {
-        home.pop += 1;
+        if (p.folk) putFolk(home, p.folk); else home.pop += 1;
         addAwe(home, 0.15);
         s.align = clamp(s.align + P.folkMoveAlign, -1, 1);
         s.fx.push({ kind: "spark", x: p.x, y: p.y, t: 0, life: 1.1, color: "#f0d38a" });
-        log(`ผู้คนเข้าไปอยู่กับหมู่บ้าน${home.name}`);
+        log(`${name}เข้าไปอยู่กับหมู่บ้าน${home.name}`);
       } else {
         // ตกกลางที่ไม่มีใคร คนคนนั้นก็เดินหายไปในป่า
         s.fx.push({ kind: "dust", x: p.x, y: p.y, t: 0, life: 1 });
-        log("ผู้คนหายเข้าไปในป่า");
+        log(`${name}หายเข้าไปในป่า`);
       }
       break;
     }

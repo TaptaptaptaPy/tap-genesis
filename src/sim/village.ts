@@ -1,6 +1,7 @@
 import { clamp, pick, type Rng } from "../core/rng";
 import { isWater } from "./biomes";
 import { tileAt } from "./world";
+import { stepFolk } from "./folk";
 import type { GameState, NeedId, Village } from "./types";
 import balance from "../../data/balance.json";
 
@@ -24,7 +25,7 @@ export function foundVillage(s: GameState, x: number, y: number, rng: Rng): Vill
     x, y, pop: balance.start.villagePop, belief: 0.35, name: pick(NAMES, rng), age: 0,
     wood: 4, shelter: balance.start.villagePop * balance.needs.shelterNeedPerPop,
     needs: { food: 1, wood: 1, shelter: 1 },
-    awe: 0, plague: 0, ask: null, askCd: 0,
+    awe: 0, plague: 0, ask: null, askCd: 0, folk: [],
   };
   t.village = v;
   s.villages.push(v);
@@ -137,6 +138,8 @@ export function stepVillages(s: GameState, rng: Rng, log: (m: string) => void): 
     v.belief += (target - v.belief) * V.beliefDrift;
 
     s.faith = Math.min(s.faith + v.pop * v.belief * V.faithPerBeliever, faithCap(s));
+
+    stepFolk(s, v, rng);
 
     // หมู่บ้านร้องขอสิ่งที่ขาดที่สุด — ผู้เล่นจะได้รู้ว่าตอนนี้ควรทำอะไร
     updateAsk(v, log);

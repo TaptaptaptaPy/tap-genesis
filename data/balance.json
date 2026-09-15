@@ -146,6 +146,14 @@
     "believers": 300,
     "minYears": 6
   },
+  "folk": {
+    "_comment": "ชาวบ้านเป็นตัวตนจริงใน sim ไม่ใช่ภาพที่คำนวณจาก pop — หยิบคนไหนก็ได้คนนั้นจริงๆ",
+    "perPop": 3.2,
+    "maxPerVillage": 14,
+    "walkSpeed": 0.055,
+    "restTicks": 26,
+    "workRadius": 2.4
+  },
   "town": {
     "_comment": "หมู่บ้านโตขึ้นแล้วเปลี่ยนรูปทรง ไม่ใช่แค่เพิ่มจำนวนกระท่อม",
     "hallAtPop": 26,

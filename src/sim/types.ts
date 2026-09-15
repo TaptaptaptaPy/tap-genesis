@@ -18,6 +18,21 @@ export interface Tile {
 export interface Needs { food: number; wood: number; shelter: number; }
 export type NeedId = keyof Needs;
 
+export type FolkJob = "farm" | "wood" | "build" | "pray" | "idle" | "sick";
+
+/** ชาวบ้านหนึ่งคน — มีชื่อ มีตำแหน่ง และหยิบขึ้นมาได้ทีละคน
+ *  เดิมชาวบ้านเป็นแค่ภาพที่คำนวณจาก `pop` ทำให้ "หยิบคน" หมายถึงหยิบคนนิรนามจากหมู่บ้าน */
+export interface Folk {
+  id: number;
+  name: string;
+  x: number; y: number;
+  /** จุดที่กำลังเดินไป */
+  tx: number; ty: number;
+  job: FolkJob;
+  /** นับถอยหลังก่อนเปลี่ยนเป้าหมายใหม่ */
+  rest: number;
+}
+
 export interface Village {
   id: number;
   x: number; y: number;
@@ -33,6 +48,8 @@ export interface Village {
   /** สิ่งที่หมู่บ้านกำลังร้องขอ — ตัวที่ทำให้ผู้เล่นรู้ว่าตอนนี้ควรทำอะไร */
   ask: NeedId | null;
   askCd: number;
+  /** คนในหมู่บ้านที่มีตัวตนจริง จำนวนไล่ตาม `pop` แต่ไม่เท่ากันเป๊ะ */
+  folk: Folk[];
 }
 
 export type ActionId = "forage" | "raid" | "help" | "worship" | "wander";
@@ -96,6 +113,8 @@ export interface Projectile {
   x: number; y: number; z: number;
   vx: number; vy: number; vz: number;
   age: number;
+  /** ถ้าสิ่งที่ขว้างคือคน ก็ต้องเป็น *คนคนนั้น* ที่ไปตกอีกฝั่ง */
+  folk?: Folk | null;
 }
 
 export interface GameState {
@@ -113,6 +132,8 @@ export interface GameState {
   /** มือกำลังถืออะไรอยู่ และหยิบมาจากช่องไหน */
   carrying: CarryKind | null;
   carryFrom: { x: number; y: number } | null;
+  /** คนที่อยู่ในมือตอนนี้ — เก็บทั้งคนไว้ ไม่ใช่แค่จำนวน */
+  carryFolk: Folk | null;
   /** ของที่กำลังลอยอยู่กลางอากาศ */
   thrown: Projectile[];
   fx: Effect[];

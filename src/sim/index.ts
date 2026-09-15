@@ -3,6 +3,7 @@ import { generateWorld, naturalWeather, stepLand } from "./world";
 import { faithCap, foundVillage, stepVillages, totalPop } from "./village";
 import { reachedGoal } from "./reign";
 import { stepProjectiles } from "./physics";
+import { reseedFolkIds } from "./folk";
 import { makeCreature, newGenes, newWeights, stepCreature } from "./creature";
 import { maybeStartDisaster, stepDisasters } from "./disaster";
 import { isWater } from "./biomes";
@@ -17,7 +18,8 @@ export { ACTION_NAME, GENE_NAME, NEED_NAME as CREATURE_NEED_NAME, maxAge, teach,
 export { totalPop, nearestVillage, neediestVillage, maxVillages, faithCap,
          influenceOf, inInfluence, NEED_NAME } from "./village";
 export { computeReign, reachedGoal, goalBelievers, goalProgress } from "./reign";
-export { grabAt, throwTo, dropCarry, whatIsAt, CARRY_NAME } from "./physics";
+export { grabAt, throwTo, dropCarry, whatIsAt, CARRY_NAME, carryLabel } from "./physics";
+export { nearestFolk, folkTarget, JOB_NAME, reseedFolkIds } from "./folk";
 export { advise, adviceEvery, VOICE_NAME } from "./advisor";
 export type { Advice, Voice } from "./advisor";
 export type { Reign } from "./reign";
@@ -34,7 +36,7 @@ export function createGame(seed: number): Game {
   const state: GameState = {
     tiles: generateWorld(rng), villages: [], creature: null as never, best: null,
     faith: balance.start.faith, align: 0, tick: 0, year: 0,
-    dead: false, won: false, carrying: null, carryFrom: null, thrown: [],
+    dead: false, won: false, carrying: null, carryFrom: null, carryFolk: null, thrown: [],
     fx: [], log: [], shake: 0,
     disasters: [], lastDisasterTick: 0, landCount: 0,
     seed, rngState: 0, terrainVersion: 1,
@@ -95,6 +97,8 @@ export function snapshot(g: Game): PlainState {
 
 export function restore(p: PlainState): Game {
   const state = fromPlain(p);
+  // เซฟรุ่นก่อนยังไม่มี folk และ id ต้องไม่ชนกับคนที่จะเกิดใหม่หลังโหลด
+  reseedFolkIds(state);
   const rng = mulberry32(state.seed);
   rng.state = state.rngState;
   return { state, rng };

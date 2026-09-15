@@ -2,7 +2,8 @@ import "./style.css";
 import { FixedLoop } from "./core/loop";
 import { createGame, stepTick, stepEffects, castSpell, teach, command,
          snapshot, restore, saveLooksValid, totalPop, computeReign, placeCreature,
-         grabAt, throwTo, dropCarry, whatIsAt, CARRY_NAME, tileAt, advise, adviceEvery,
+         grabAt, throwTo, dropCarry, whatIsAt, CARRY_NAME, carryLabel, nearestFolk,
+         tileAt, advise, adviceEvery,
          SPELLS, type Game, type CommandId } from "./sim/index";
 import { World3D } from "./render/world3d";
 import { Terrain3D, groundY } from "./render/terrain3d";
@@ -202,11 +203,15 @@ bGrab.onclick = () => {
  *  ไม่งั้นผู้เล่นต้องเดาเองว่าช่องไหนหยิบได้ ซึ่งเป็นการเดาที่ไม่มีทางเดาถูก */
 function renderGrabBar() {
   const s = game.state;
-  if (s.carrying) { bGrab.textContent = `วาง${CARRY_NAME[s.carrying]}`; bGrab.dataset.on = "1"; return; }
+  if (s.carrying) { bGrab.textContent = `วาง${carryLabel(s)}`; bGrab.dataset.on = "1"; return; }
   if (!grabbing) { bGrab.textContent = "หยิบของ"; bGrab.dataset.on = "0"; return; }
   const at = hover ?? selected;
-  const here = at ? whatIsAt(tileAt(s.tiles, at.x, at.y) ?? null) : null;
-  bGrab.textContent = here ? `หยิบ${CARRY_NAME[here]}` : "ไม่มีอะไรให้หยิบ";
+  const t = at ? tileAt(s.tiles, at.x, at.y) ?? null : null;
+  const here = whatIsAt(t);
+  // ถ้าใต้มือเป็นคน ก็บอกชื่อเขาไปเลย จะได้รู้ว่ากำลังจะหยิบใคร
+  const who = here === "folk" && t?.village ? nearestFolk(t.village, at!.x + 0.5, at!.y + 0.5) : null;
+  bGrab.textContent = who ? `หยิบ${who.name}`
+    : here ? `หยิบ${CARRY_NAME[here]}` : "ไม่มีอะไรให้หยิบ";
   bGrab.dataset.on = "1";
 }
 const bSound = document.getElementById("bSound")!;

@@ -1,8 +1,6 @@
 import * as THREE from "three";
-import type { GameState, Village } from "../sim/types";
+import type { Folk, GameState, Village } from "../sim/types";
 import { groundY } from "./terrain3d";
-import { villageFootprint } from "./actors3d";
-import balance from "../../data/balance.json";
 
 /** ชาวบ้านที่มองเห็นได้
  *
@@ -15,41 +13,11 @@ import balance from "../../data/balance.json";
  *  จึงไม่ต้องเซฟ ไม่ต้องแก้ `src/sim/` และ `npm run sim` ไม่กระทบเลยสักบรรทัด
  */
 
-/** จำนวนตัวสูงสุดทั้งเกาะ — เกินกว่านี้ตาเปล่าก็แยกไม่ออกแล้ว แต่ GPU ยังต้องวาด */
+/** จำนวนช่องคนสูงสุดที่วาดได้ทั้งเกาะ — `folk.maxPerVillage` × จำนวนหมู่บ้านสูงสุดพอดี */
 const MAX_BODIES = 96;
-/** ต่อหนึ่งหมู่บ้าน ป้องกันไม่ให้หมู่บ้านใหญ่กินโควตาของทุกหมู่บ้านที่เหลือ */
-const PER_VILLAGE = 16;
-/** ประชากรกี่คนต่อหนึ่งตัวที่วาด — หนึ่งตัวแทนคนกลุ่มหนึ่ง ไม่ใช่หนึ่งคน */
-const POP_PER_BODY = 3;
-/** ไปกลับหนึ่งรอบใช้เวลากี่วินาที (ตามเวลาเกม จึงเร็วขึ้นตอนกด 2× / 4×) */
-const ROUND_TRIP_SECONDS = 13;
-/** ความต้องการต่ำกว่านี้ถือว่าหมู่บ้านไม่มีอะไรให้ทำ คนจะยืนรอแทนที่จะออกไปทำงาน */
-const IDLE_BELOW = 0.5;
-/** ความทรงจำถึงปาฏิหาริย์สูงกว่านี้ คนจะมารวมกันกลางหมู่บ้านเพื่อบูชา */
-const PRAY_ABOVE = 0.35;
-/** รัศมีที่หมู่บ้านเก็บเกี่ยวจริง อ่านจาก balance.json ไม่ใช่เดาเอง
- *
- *  ข้อควรรู้: พอหมู่บ้านโตเต็มที่ กลุ่มกระท่อมกินรัศมีราว 1.7 ขณะที่ workRadius มีแค่ 2
- *  หมู่บ้านจึงเกือบกลืนไร่ของตัวเองหมด ระยะเดินข้างล่างเลยต้องอิงขอบกระท่อมเป็นหลัก
- *  ไม่งั้นคนจะเดินอยู่ในหลังคาตัวเอง ถ้าวันหนึ่งแก้สเกลตรงนี้ ให้กลับมาดูค่านี้ด้วย */
-const WORK_RADIUS = balance.village.workRadius;
 
-/** ผ้าย้อมสีเดียวกันทั้งหมู่บ้านดูตาย — แต่ต้องคงที่ต่อช่อง ไม่งั้นสีจะกระพริบทุกเฟรม
- *  เคยใช้โทนครีม แล้วตัวคนกลืนหายไปกับเนินที่โดนแดดจนเหลือแต่หัวกับของที่แบกลอยอยู่
- *  สีผ้าต้องเข้มและอิ่มพอจะตัดกับทั้งหญ้าสว่างและป่าทึบ */
+/** ผ้าย้อมสีเดียวกันทั้งหมู่บ้านดูตาย — ผูกสีกับหมายเลขช่องเพื่อไม่ให้กระพริบทุกเฟรม */
 const CLOTH = [0x9a5340, 0x4d5f80, 0x8a6f2a, 0x6d4a63, 0xb0674a, 0x56705a];
-
-/** ค่าสุ่มที่ซ้ำได้จากเลขจำนวนเต็ม — ใช้แทน Math.random() เพื่อให้ตัวเดิมยืนที่เดิมทุกเฟรม */
-function hash(n: number): number {
-  let h = Math.imul(n ^ 0x9e3779b9, 0x85ebca6b);
-  h = Math.imul(h ^ (h >>> 13), 0xc2b2ae35);
-  return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
-}
-
-/** คลื่นสามเหลี่ยม 0→1→0 คาบ 2 — เดินไปแล้วเดินกลับโดยไม่ต้องเก็บทิศไว้ */
-const triangle = (t: number) => { const u = ((t % 2) + 2) % 2; return u > 1 ? 2 - u : u; };
-
-type Mood = "work" | "idle" | "pray" | "sick";
 
 export class Villagers3D {
   readonly group = new THREE.Group();
@@ -92,21 +60,18 @@ export class Villagers3D {
     if (this.body.instanceColor) this.body.instanceColor.needsUpdate = true;
   }
 
-  /** `dt` มาจาก FixedLoop ซึ่งคูณความเร็วเกมมาแล้ว ใช้ `dt` ไม่ใช่ `performance.now()`
-   *  ไม่งั้นกด 4× โลกจะเดินเร็วขึ้นแต่คนยังเดินเท่าเดิม */
+  /** `dt` มาจาก FixedLoop ซึ่งคูณความเร็วเกมมาแล้ว — ใช้กับการแกว่งขาเท่านั้น
+   *  ตำแหน่งของคนมาจาก `v.folk` ใน `src/sim/` ตรงๆ แล้ว ไม่ได้คำนวณเองที่นี่อีก
+   *  เดิมที่นี่เดาตำแหน่งด้วยแฮช ทำให้คนบนจอไม่ใช่คนเดียวกับคนที่มืออาจหยิบขึ้นมา */
   update(s: GameState, dt: number) {
     this.clock += dt;
     let k = 0;
 
     for (const v of s.villages) {
-      const n = Math.min(PER_VILLAGE, Math.max(1, Math.round(v.pop / POP_PER_BODY)));
-      const mood: Mood = v.plague > 0 ? "sick"
-        : v.awe > PRAY_ABOVE ? "pray"
-        : Math.min(v.needs.food, v.needs.wood) < IDLE_BELOW ? "idle"
-        : "work";
-
-      for (let i = 0; i < n && k < MAX_BODIES; i++, k++)
-        this.place(s, v, i, k, mood);
+      for (const f of v.folk) {
+        if (k >= MAX_BODIES) break;
+        this.place(s, v, f, k++);
+      }
     }
 
     for (; k < MAX_BODIES; k++) this.hide(k);
@@ -116,73 +81,46 @@ export class Villagers3D {
     this.load.instanceMatrix.needsUpdate = true;
   }
 
-  private place(s: GameState, v: Village, i: number, k: number, mood: Mood) {
-    const cx = v.x + 0.5, cz = v.y + 0.5;
-    const a = hash(v.id * 977 + i * 31) * Math.PI * 2;
-    const pace = 0.7 + hash(v.id * 7919 + i * 17) * 0.7;
-    const phase = hash(v.id * 61 + i * 409) * 2;
+  private place(s: GameState, v: Village, f: Folk, k: number) {
+    const dx = f.tx - f.x, dy = f.ty - f.y;
+    const dist = Math.hypot(dx, dy);
+    const moving = f.rest <= 0 && dist > 0.12;
+    const face = moving ? Math.atan2(dy, dx) : Math.atan2(f.y - (v.y + 0.5), f.x - (v.x + 0.5));
 
-    // กลุ่มกระท่อมกินรัศมีถึงราว 1.5 หน่วยตอนหมู่บ้านใหญ่ คนที่ยืนนิ่งต้องอยู่นอกนั้น
-    // ไม่งั้นหมู่บ้านยิ่งโต ยิ่งกลืนคนของตัวเองจนมองไม่เห็นสักคน
-    // ยืนชิดขอบกลุ่มกระท่อมเสมอ หมู่บ้านโตแค่ไหนก็ยังเห็นคนของมัน
-    const ring = villageFootprint(v) + 0.35;
-    const far = ring + 0.5 + hash(v.id * 131 + i * 613) * WORK_RADIUS * 0.75;
+    let lift = 0, squat = 1, lean = 0, carrying = false;
+    const phase = f.id * 0.7;
 
-    let x = cx, z = cz, face = a, lift = 0, squat = 1, lean = 0, carrying = false;
-
-    if (mood === "work") {
-      // ออกไปทำกินที่ช่องรอบๆ แล้วแบกกลับ — ขากลับคือขาที่มีของอยู่บนหัว
-      const u = this.clock * (2 / ROUND_TRIP_SECONDS) * pace + phase;
-      const t = triangle(u);
-      const outward = t >= triangle(u - 0.01);
-      const home = ring * 0.6;
-      const r = home + (far - home) * t;
-      x = cx + Math.cos(a) * r;
-      z = cz + Math.sin(a) * r;
-      face = outward ? a : a + Math.PI;
-      lean = 0.13;
-      lift = Math.abs(Math.sin(this.clock * 7 * pace + phase * 9)) * 0.04;
-      carrying = !outward && t > 0.12;
-    } else if (mood === "idle") {
-      // ไม่มีอะไรให้ทำ ยืนเก้ๆ กังๆ อยู่ขอบหมู่บ้าน หันหน้าออกไปทางไร่ที่แห้ง
-      const r = ring + hash(v.id * 53 + i * 907) * 0.6;
-      x = cx + Math.cos(a) * r;
-      z = cz + Math.sin(a) * r;
-      face = a + Math.sin(this.clock * 0.5 + phase * 3) * 0.5;
-    } else if (mood === "pray") {
-      // เพิ่งเห็นปาฏิหาริย์ มายืนเป็นวงแล้วโค้งให้กลางหมู่บ้าน
-      x = cx + Math.cos(a) * ring;
-      z = cz + Math.sin(a) * ring;
-      face = a + Math.PI;
-      const bow = (Math.sin(this.clock * 1.6 + phase * 2) + 1) * 0.5;
+    if (f.job === "sick") {
+      squat = 0.6; lean = 0.3;
+      lift = Math.sin(this.clock * 0.9 + phase) * 0.012;
+    } else if (f.job === "pray") {
+      const bow = (Math.sin(this.clock * 1.6 + phase) + 1) * 0.5;
       lean = bow * 0.55;
       squat = 1 - bow * 0.16;
       lift = bow * 0.03;
-    } else {
-      // โรคระบาด นั่งซมอยู่ขอบกระท่อม ไม่ไปไหนทั้งวัน
-      const r = ring * 0.85;
-      x = cx + Math.cos(a) * r;
-      z = cz + Math.sin(a) * r;
-      face = a;
-      squat = 0.6;
-      lean = 0.3;
-      lift = Math.sin(this.clock * 0.9 + phase * 5) * 0.012;
+    } else if (moving) {
+      lean = 0.13;
+      lift = Math.abs(Math.sin(this.clock * 7 + phase * 3)) * 0.04;
+      // ขากลับบ้านคือขาที่มีของอยู่บนหัว
+      const homeward = Math.hypot(f.tx - (v.x + 0.5), f.ty - (v.y + 0.5)) < 1.1;
+      carrying = homeward && (f.job === "farm" || f.job === "wood");
+    } else if (f.job === "idle") {
+      lean = Math.sin(this.clock * 0.5 + phase) * 0.06;
     }
 
-    const y = groundY(s, x, z) + lift;
+    const y = groundY(s, f.x, f.y) + lift;
     const heading = Math.atan2(Math.cos(face), Math.sin(face));
     const d = this.dummy;
 
-    d.position.set(x, y, z);
+    d.position.set(f.x, y, f.y);
     d.rotation.set(lean, heading, 0);
     d.scale.set(1, squat, 1);
     d.updateMatrix();
     this.body.setMatrixAt(k, d.matrix);
 
-    // หัวต้องขยับตามตัวที่เอน ไม่งั้นจะลอยหลุดออกจากบ่าตอนโค้ง
     const neck = 0.36 * squat;
-    const hx = x + Math.cos(face) * Math.sin(lean) * neck;
-    const hz = z + Math.sin(face) * Math.sin(lean) * neck;
+    const hx = f.x + Math.cos(face) * Math.sin(lean) * neck;
+    const hz = f.y + Math.sin(face) * Math.sin(lean) * neck;
     const hy = y + Math.cos(lean) * neck;
     d.position.set(hx, hy, hz);
     d.scale.setScalar(1);
