@@ -33,11 +33,15 @@ export function fromPlain(input: PlainState): GameState {
   return { ...p, tiles, fx: [], shake: 0 };
 }
 
-/** ตรวจว่าไฟล์เซฟยังเข้ากับโครงปัจจุบันไหม ก่อนจะเอาไปใช้ */
+/** ตรวจว่าไฟล์เซฟยังเข้ากับโครงปัจจุบันไหม ก่อนจะเอาไปใช้
+ *  เคยเช็ก `creatures` (พหูพจน์) ค้างไว้จากตอนที่ยังมีประชากรสัตว์หลายตัว
+ *  พอตัดเหลือ `creature` ตัวเดียว ฟังก์ชันนี้เลยตอบ false กับเซฟทุกไฟล์ เกมจึงโหลดไม่ขึ้นเลยสักช่อง
+ *  `npm run sim` จับไม่ได้เพราะมันเรียก snapshot/restore ตรงๆ ข้ามด่านนี้ไป — ตอนนี้เทสต์เดินผ่านทางนี้แล้ว */
 export function looksValid(p: unknown, expectTiles: number): p is PlainState {
   if (!p || typeof p !== "object") return false;
   const o = p as Record<string, unknown>;
   return Array.isArray(o.tiles) && o.tiles.length === expectTiles &&
-         Array.isArray(o.villages) && Array.isArray(o.creatures) &&
+         Array.isArray(o.villages) &&
+         typeof o.creature === "object" && o.creature !== null &&
          typeof o.faith === "number" && typeof o.tick === "number";
 }
