@@ -2,12 +2,13 @@ import "./style.css";
 import { FixedLoop } from "./core/loop";
 import { createGame, stepTick, stepEffects, castSpell, teach, command,
          snapshot, restore, saveLooksValid, totalPop, computeReign, placeCreature,
+         grabAt, throwTo, dropCarry, whatIsAt, CARRY_NAME, tileAt,
          SPELLS, type Game, type CommandId } from "./sim/index";
 import { World3D } from "./render/world3d";
 import { Terrain3D, groundY } from "./render/terrain3d";
 import { Creature3D, Villages3D } from "./render/actors3d";
 import { Villagers3D } from "./render/villagers3d";
-import { Hand3D } from "./render/hand3d";
+import { Hand3D, Thrown3D } from "./render/hand3d";
 import { unlock as unlockAudio, sfx, setMuted, isMuted } from "./core/audio";
 import { Fx3D } from "./render/fx3d";
 import { Hud } from "./ui/hud";
@@ -23,6 +24,8 @@ let armed: string | null = null;
 let armedCmd: CommandId | null = null;
 /** โหมด "ยกสัตว์ไปวาง" — ไม่ใช่คำสั่งให้มันเดินเอง แต่คือมือหยิบมันไปวางจริงๆ */
 let lifting = false;
+/** โหมดหยิบของ — แตะช่องเพื่อหยิบ แล้วแตะอีกช่องเพื่อขว้าง */
+let grabbing = false;
 let hover: { x: number; y: number } | null = null;
 let selected: { x: number; y: number } | null = null;
 
@@ -31,9 +34,11 @@ let terrain = new Terrain3D(game.state);
 const villages = new Villages3D();
 const villagers = new Villagers3D();
 const hand = new Hand3D();
+const thrown = new Thrown3D();
 const creature = new Creature3D();
 const fx = new Fx3D();
-world.scene.add(terrain.group, villages.group, villagers.group, creature.root, fx.group, hand.root);
+world.scene.add(terrain.group, villages.group, villagers.group, creature.root, fx.group,
+                hand.root, thrown.group);
 
 const hud = new Hud((id) => {
   armedCmd = null; lifting = false; hud.setCommand(null);
@@ -155,6 +160,17 @@ function onTap(sx: number, sy: number) {
     lifting = false; hud.setCommand(null);
     return;
   }
+  // ถืออะไรอยู่ก็ขว้างไปตรงที่แตะ ไม่ต้องเลือกโหมดใหม่ — มือเดียวจบ
+  if (s.carrying) {
+    if (throwTo(s, hit.x, hit.y, log)) sfx.lift(); else sfx.deny();
+    renderGrabBar();
+    return;
+  }
+  if (grabbing) {
+    if (grabAt(s, hit.x, hit.y, log)) sfx.place(); else sfx.deny();
+    renderGrabBar();
+    return;
+  }
   if (armedCmd) {
     command(s, armedCmd, hit.x, hit.y);
     hud.say(armedCmd === "stay" ? "สั่งให้อยู่ตรงนั้น"
@@ -169,6 +185,30 @@ function onTap(sx: number, sy: number) {
 // ───────────────────────── ปุ่ม ─────────────────────────
 
 document.getElementById("zoomOut")!.onclick = () => { world.resetView(); renderZoomOut(); };
+
+const bGrab = document.getElementById("bGrab")!;
+bGrab.onclick = () => {
+  const s = game.state;
+  if (s.carrying) { dropCarry(s, (m) => hud.say(m)); renderGrabBar(); return; }
+  grabbing = !grabbing;
+  armed = null; armedCmd = null; lifting = false;
+  hud.setArmed(null); hud.setCommand(null);
+  hud.say(grabbing ? "แตะต้นไม้ หิน หรือผืนดินอุดม เพื่อหยิบขึ้นมา" : "ยกเลิก");
+  renderGrabBar();
+};
+
+/** ปุ่มมือบอกสถานะตัวเองได้ในตัว ไม่ต้องอ่านข้อความบนแถบ
+ *  ตอนอยู่ในโหมดหยิบ มันบอกด้วยว่าใต้มือตอนนี้มีอะไรให้หยิบ
+ *  ไม่งั้นผู้เล่นต้องเดาเองว่าช่องไหนหยิบได้ ซึ่งเป็นการเดาที่ไม่มีทางเดาถูก */
+function renderGrabBar() {
+  const s = game.state;
+  if (s.carrying) { bGrab.textContent = `วาง${CARRY_NAME[s.carrying]}`; bGrab.dataset.on = "1"; return; }
+  if (!grabbing) { bGrab.textContent = "หยิบของ"; bGrab.dataset.on = "0"; return; }
+  const at = hover ?? selected;
+  const here = at ? whatIsAt(tileAt(s.tiles, at.x, at.y) ?? null) : null;
+  bGrab.textContent = here ? `หยิบ${CARRY_NAME[here]}` : "ไม่มีอะไรให้หยิบ";
+  bGrab.dataset.on = "1";
+}
 const bSound = document.getElementById("bSound")!;
 bSound.onclick = () => {
   unlockAudio();
@@ -240,7 +280,7 @@ function loadFrom(slot: SlotId) {
   const r = readSlot(slot);
   if (!r || !saveLooksValid(r.state, W * H)) { hud.say("ช่องนี้ว่าง หรือเซฟมาจากเกมคนละรุ่น"); return; }
   game = restore(r.state);
-  armed = null; armedCmd = null; lifting = false; selected = null;
+  armed = null; armedCmd = null; lifting = false; grabbing = false; selected = null;
   hud.setArmed(null); hud.setCommand(null);
   hud.buildSpells(game.state.align, null);
   rebuildTerrain();
@@ -309,9 +349,12 @@ const loop = new FixedLoop(
     creature.update(s, s.creature, now);
     const sp = armed ? SPELLS.find((x) => x.id === armed)! : null;
     fx.setCursor(s, hover ?? selected, sp ? sp.radius : null, sp?.dark ?? false);
-    hand.setGrip(!!armed || lifting);
+    hand.setGrip(!!armed || lifting || !!s.carrying);
     hand.setDark(sp?.dark ?? false);
-    hand.update(s, hover ?? selected, dt, now, lifting);
+    hand.setCarry(s.carrying);
+    hand.update(s, hover ?? selected, dt, now, lifting || !!s.carrying);
+    thrown.update(s, now);
+    if (grabbing || s.carrying) renderGrabBar();
     fx.update(s, now);
 
     world.update(dt, (x, z) => groundY(s, x, z));

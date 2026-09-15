@@ -156,6 +156,24 @@
     "watchRadius": 4.5,
     "learnRate": 0.055
   },
+  "physics": {
+    "_comment": "มือหยิบของขึ้นมาแล้วขว้างได้จริง วิถีเป็นพาราโบลา ตกแล้วมีผลกับสิ่งที่อยู่ตรงนั้น",
+    "_units": "z ของกระสุนใช้หน่วยเดียวกับ tile.h (ราว 0-1.5) ไม่ใช่เมตร แรงโน้มถ่วงจึงเป็นเลขเล็ก",
+    "gravity": 3.2,
+    "throwSpeed": 9,
+    "arc": 1.25,
+    "maxFlight": 6,
+    "grabFertNeeded": 0.45,
+    "rockPopMult": 0.94,
+    "rockFertMult": 0.86,
+    "rockAlign": -0.02,
+    "rockScare": -0.5,
+    "treeAlign": 0.012,
+    "foodNeed": 0.22,
+    "foodAwe": 0.18,
+    "foodAlign": 0.008,
+    "splashRadius": 1.1
+  },
   "start": {
     "faith": 40,
     "villagePop": 10,

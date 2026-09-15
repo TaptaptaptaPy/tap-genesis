@@ -165,3 +165,11 @@ canvas:active{cursor:grabbing}
 .rwrap button{background:none;color:#f0d38a;border:1px solid rgba(240,211,138,.45);
   border-radius:999px;padding:10px 26px;font-family:inherit;font-size:14px;cursor:pointer}
 .rwrap button:active{background:rgba(240,211,138,.16)}
+
+/* ปุ่มมือ — อยู่มุมซ้ายล่างของฉาก ใกล้กับตำแหน่งที่นิ้วอยู่ตอนเล่นบน iPad */
+#bGrab{position:absolute;left:14px;bottom:14px;z-index:4;
+  background:rgba(10,22,28,.82);color:var(--parch);border:1px solid rgba(240,211,138,.35);
+  border-radius:999px;padding:8px 16px;font-family:inherit;font-size:13px;cursor:pointer;
+  backdrop-filter:blur(8px)}
+#bGrab[data-on="1"]{border-color:#f0d38a;color:#f0d38a;background:rgba(240,211,138,.18)}
+#bGrab:active{background:rgba(240,211,138,.24)}

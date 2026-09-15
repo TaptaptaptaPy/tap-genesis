@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import type { GameState } from "../sim/types";
+import type { CarryKind, GameState } from "../sim/types";
 import { groundY } from "./terrain3d";
 
 /** มือของพระเจ้า
@@ -26,6 +26,8 @@ export class Hand3D {
   private palm: THREE.Mesh;
   private digits: THREE.Group[] = [];
   private mat: THREE.MeshLambertMaterial;
+  /** ของที่อยู่ในฝ่ามือ — หินเป็นก้อนเหลี่ยม ต้นไม้เป็นกรวย อาหารเป็นก้อนกลม */
+  private held: Record<CarryKind, THREE.Mesh>;
   /** 0 = แบมือ, 1 = กำแน่น */
   private grip = 0;
   private targetGrip = 0;
@@ -71,6 +73,20 @@ export class Hand3D {
     this.digits.push(thumb);
     this.root.add(thumb);
 
+    this.held = {
+      rock: new THREE.Mesh(new THREE.IcosahedronGeometry(0.17, 0),
+        new THREE.MeshLambertMaterial({ color: 0x5b5a58 })),
+      tree: new THREE.Mesh(new THREE.ConeGeometry(0.15, 0.42, 6),
+        new THREE.MeshLambertMaterial({ color: 0x2f5c3a })),
+      food: new THREE.Mesh(new THREE.SphereGeometry(0.15, 10, 8),
+        new THREE.MeshLambertMaterial({ color: 0xd8b25c })),
+    };
+    for (const m of Object.values(this.held)) {
+      m.position.set(0, -0.06, 0.34);
+      m.visible = false;
+      this.root.add(m);
+    }
+
     this.root.visible = false;
     // เกาะกว้าง 24 หน่วยและกล้องอยู่ห่าง ~34 มือขนาดจริงจะเล็กจนไม่มีใครเห็น
     // ใน B&W มือก็ใหญ่เกินจริงเหมือนกัน เพราะมันคือตัวแทนของผู้เล่น ไม่ใช่วัตถุในฉาก
@@ -79,6 +95,11 @@ export class Hand3D {
 
   /** กำมือตอนเล็งคาถา — บอกด้วยรูปมือว่ากำลังจะทำอะไร ไม่ต้องอ่านข้อความ */
   setGrip(closed: boolean) { this.targetGrip = closed ? 1 : 0; }
+
+  /** ถืออะไรอยู่ให้เห็นในฝ่ามือ ไม่ใช่รู้จากข้อความบนจออย่างเดียว */
+  setCarry(kind: CarryKind | null) {
+    for (const [k, m] of Object.entries(this.held)) m.visible = k === kind;
+  }
 
   /** มือแดงขึ้นเมื่อสิ่งที่กำลังจะร่ายเป็นคาถาดำ */
   setDark(dark: boolean) { this.mat.color.setHex(dark ? DARK_SKIN : SKIN); }
@@ -109,3 +130,54 @@ export class Hand3D {
     });
   }
 }
+
+
+/** ของที่กำลังลอยอยู่กลางอากาศ
+ *  ใช้ mesh สำรองไว้จำนวนหนึ่งแล้วซ่อน/แสดงเอา ถูกกว่าการสร้างใหม่ทุกครั้งที่ขว้าง */
+const POOL = 12;
+
+export class Thrown3D {
+  readonly group = new THREE.Group();
+  private slots: { rock: THREE.Mesh; tree: THREE.Mesh; food: THREE.Mesh }[] = [];
+
+  constructor() {
+    const mat = {
+      rock: new THREE.MeshLambertMaterial({ color: 0x5b5a58 }),
+      tree: new THREE.MeshLambertMaterial({ color: 0x2f5c3a }),
+      food: new THREE.MeshLambertMaterial({ color: 0xd8b25c }),
+    };
+    const geo = {
+      rock: new THREE.IcosahedronGeometry(0.19, 0),
+      tree: new THREE.ConeGeometry(0.17, 0.48, 6),
+      food: new THREE.SphereGeometry(0.17, 10, 8),
+    };
+    for (let i = 0; i < POOL; i++) {
+      const set = {
+        rock: new THREE.Mesh(geo.rock, mat.rock),
+        tree: new THREE.Mesh(geo.tree, mat.tree),
+        food: new THREE.Mesh(geo.food, mat.food),
+      };
+      for (const m of Object.values(set)) { m.visible = false; m.castShadow = true; this.group.add(m); }
+      this.slots.push(set);
+    }
+  }
+
+  update(s: GameState, time: number) {
+    for (let i = 0; i < POOL; i++) {
+      const p = s.thrown[i];
+      const set = this.slots[i];
+      for (const [k, m] of Object.entries(set)) {
+        const on = !!p && p.kind === k;
+        m.visible = on;
+        if (!on || !p) continue;
+        m.position.set(p.x, worldHeight(p.z), p.y);
+        // หมุนระหว่างลอย ให้รู้สึกว่ามันถูกขว้างจริง ไม่ใช่เลื่อนไปเฉยๆ
+        m.rotation.set(time * 0.006 + i, time * 0.004 + i, 0);
+      }
+    }
+  }
+}
+
+/** ความสูง z ของกระสุนใช้หน่วยเดียวกับ `tile.h` จึงต้องแปลงด้วยสเกลเดียวกับภูมิประเทศ */
+import { HEIGHT_SCALE } from "./terrain3d";
+const worldHeight = (z: number) => z * HEIGHT_SCALE;

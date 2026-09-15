@@ -90,6 +90,14 @@ export interface Disaster {
   name: string;
 }
 
+export type CarryKind = "rock" | "tree" | "food";
+export interface Projectile {
+  kind: CarryKind;
+  x: number; y: number; z: number;
+  vx: number; vy: number; vz: number;
+  age: number;
+}
+
 export interface GameState {
   tiles: Tile[];
   villages: Village[];
@@ -102,6 +110,11 @@ export interface GameState {
   dead: boolean;
   /** ถึงเป้าหมายแล้ว — เกมไม่จบทันที แต่ฉากจบถูกปลดให้ดูได้ และเล่นต่อได้ถ้าอยาก */
   won: boolean;
+  /** มือกำลังถืออะไรอยู่ และหยิบมาจากช่องไหน */
+  carrying: CarryKind | null;
+  carryFrom: { x: number; y: number } | null;
+  /** ของที่กำลังลอยอยู่กลางอากาศ */
+  thrown: Projectile[];
   fx: Effect[];
   log: string[];
   shake: number;

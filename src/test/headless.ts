@@ -9,8 +9,9 @@
 import { createGame, stepTick, stepEffects, totalPop, maxVillages, snapshot, restore,
          tileAt, bodySize, faithCap, saveLooksValid, castSpell, spellCost, spellFor,
          SPELLS, teach, neediestVillage, isWater, inInfluence, computeReign, goalBelievers,
-         GENE_NAME, NEED_NAME,
-         type Game, type GameState, type GeneId, type Genes, type NeedId, type Village }
+         grabAt, throwTo, dropCarry, whatIsAt, CARRY_NAME, GENE_NAME, NEED_NAME,
+         type CarryKind, type Game, type GameState, type GeneId, type Genes, type NeedId,
+         type Village }
        from "../sim/index";
 import balance from "../../data/balance.json";
 
@@ -42,8 +43,38 @@ const PERSONA_NAME: Record<Persona, string> = {
 // ───────────────────────── ผู้เล่นจำลอง ─────────────────────────
 
 interface GodStats { cast: Record<string, number>; spent: number; denied: number;
-                     praise: number; scold: number; }
-const newGodStats = (): GodStats => ({ cast: {}, spent: 0, denied: 0, praise: 0, scold: 0 });
+                     praise: number; scold: number; grabbed: number; threw: Record<string, number>; }
+const newGodStats = (): GodStats =>
+  ({ cast: {}, spent: 0, denied: 0, praise: 0, scold: 0, grabbed: 0, threw: {} });
+
+/** ขว้างของแต่ละชนิดไปที่ไหนถึงจะสมเหตุสมผล
+ *  ต้นไม้ขว้างใส่หมู่บ้านไม่ได้เรื่อง ต้องขว้างลงที่โล่งใกล้หมู่บ้านถึงจะมีประโยชน์ */
+function aimFor(s: GameState, kind: CarryKind, persona: Persona) {
+  if (kind === "tree") return findBare(s);
+  const v = persona === "kind" ? (neediestVillage(s) ?? biggest(s)) : biggest(s);
+  return v ? { x: v.x, y: v.y } : null;
+}
+
+/** ที่โล่งในเขตอิทธิพลที่ควรมีป่า — ดินจางและยังไม่ใช่ป่า */
+function findBare(s: GameState) {
+  let best = null, bv = 1;
+  for (const t of s.tiles) {
+    if (isWater(t.biome) || t.village) continue;
+    if (t.biome === "FOREST" || t.biome === "MOUNT" || t.biome === "SNOW") continue;
+    if (!inInfluence(s, t.x, t.y)) continue;
+    if (t.fert < bv) { bv = t.fert; best = t; }
+  }
+  return best ? { x: best.x, y: best.y } : null;
+}
+
+/** หาช่องใกล้เป้าหมายที่มีของชนิดที่ต้องการให้หยิบ — สแกนเรียงลำดับ ไม่สุ่ม */
+function findGrab(s: GameState, want: CarryKind, cx: number, cy: number, r: number) {
+  for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
+    const t = tileAt(s.tiles, cx + dx, cy + dy);
+    if (t && whatIsAt(t) === want) return t;
+  }
+  return null;
+}
 
 interface Plan { id: string; x: number; y: number; }
 
@@ -128,12 +159,44 @@ function divine(g: Game, persona: Persona, st: GodStats, log: (m: string) => voi
   }
 
   if (s.tick % GOD.castEveryTicks !== 0) return;
+
+  // ถืออะไรอยู่ก็ขว้างก่อน มือไม่รอศรัทธา
+  if (s.carrying) {
+    const kind = s.carrying;
+    const aim = aimFor(s, kind, persona);
+    if (aim && throwTo(s, aim.x, aim.y, log)) st.threw[kind] = (st.threw[kind] ?? 0) + 1;
+    else dropCarry(s, log);
+    return;
+  }
+
+  // เทพเมตตาใช้มือสลับกับคาถา ไม่ใช่รอจนศรัทธาหมด
+  // คนเล่นจริงก็หยิบของไปวางเองบ้าง เพราะมันเร็วกว่าและไม่เสียศรัทธาสักหน่วย
+  if (persona === "kind" && s.tick % (GOD.castEveryTicks * 3) === 0) {
+    const hungry = s.villages.find((v) => v.needs.food < 0.8);
+    if (hungry) {
+      const t = findGrab(s, "food", hungry.x, hungry.y, 5);
+      if (t && grabAt(s, t.x, t.y, log)) { st.grabbed++; return; }
+    }
+    const bare = findBare(s);
+    if (bare) {
+      const t = findGrab(s, "tree", bare.x, bare.y, 6);
+      if (t && grabAt(s, t.x, t.y, log)) { st.grabbed++; return; }
+    }
+  }
+
   const plan = persona === "kind" ? kindPlan(s) : wrathPlan(s);
   if (!plan) return;
   const sp = SPELLS.find((x) => x.id === plan.id);
   if (!sp) return;
   const cost = spellCost(sp, s.align);
-  if (s.faith < cost) { st.denied++; return; }
+  if (s.faith < cost) {
+    st.denied++;
+    // ศรัทธาไม่พอ — นี่คือจังหวะที่มือมีค่า เพราะมันไม่กินศรัทธาสักหน่วย
+    const want: CarryKind = persona === "kind" ? "food" : "rock";
+    const t = findGrab(s, want, plan.x, plan.y, 4);
+    if (t && grabAt(s, t.x, t.y, log)) st.grabbed++;
+    return;
+  }
   if (castSpell(s, plan.id, plan.x, plan.y, g.rng, log)) {
     st.cast[plan.id] = (st.cast[plan.id] ?? 0) + 1;
     st.spent += cost;
@@ -213,6 +276,9 @@ function report(label: string, o: Outcome) {
   if (spells)
     console.log(`             คาถา: ${spells} · ศรัทธาที่ใช้ไป ${o.god.spent.toFixed(0)}` +
                 (o.god.denied ? ` · ศรัทธาไม่พอ ${o.god.denied} ครั้ง` : ""));
+  const threw = Object.entries(o.god.threw).map(([k, v]) => `${CARRY_NAME[k as CarryKind]}×${v}`).join(" ");
+  if (threw)
+    console.log(`             มือ: หยิบ ${o.god.grabbed} ครั้ง · ขว้าง ${threw}`);
   if (o.god.praise || o.god.scold)
     console.log(`             สอนสัตว์: ชม ${o.god.praise} ดุ ${o.god.scold}` +
                 ` · ผูกพัน ${(o.bond * 100).toFixed(0)}% · รุ่นที่ ${o.gen} ขนาด ${o.size.toFixed(2)}`);
@@ -305,6 +371,14 @@ console.log(`เป้าหมาย ${goalBelievers()} ผู้ศรัท�
             ` · ปล่อยทิ้ง ${wonOf("none")}/${RUNS} · ประชากรสูงสุดที่เมตตาเคยทำได้ ${bestPop.toFixed(0)}`);
 console.log(`รัชสมัยที่ได้: ${[...new Set(all.kind.map((o) => o.reign))].join(" · ")}`);
 
+const thrownAll = (["none", "kind", "wrath"] as Persona[])
+  .flatMap((p) => all[p].flatMap((o) => Object.entries(o.god.threw)))
+  .reduce((acc, [k, v]) => { acc[k] = (acc[k] ?? 0) + v; return acc; }, {} as Record<string, number>);
+const throwTotal = Object.values(thrownAll).reduce((a, b) => a + b, 0);
+console.log(`มือหยิบของขว้างได้จริงไหม: ขว้างรวม ${throwTotal} ครั้ง` +
+            (throwTotal ? ` (${Object.entries(thrownAll)
+              .map(([k, v]) => `${CARRY_NAME[k as CarryKind]}×${v}`).join(" ")})` : ""));
+
 const missing = SPELLS.filter((sp) => !spellsUsed.has(sp.id));
 console.log(`คาถาที่เทสต์ได้ใช้จริง ${SPELLS.length - missing.length}/${SPELLS.length}` +
             (missing.length ? ` — ยังไม่เคยแตะ: ${missing.map((sp) => sp.name).join(" ")}` : ""));
@@ -321,6 +395,8 @@ if (popOf("kind") <= popOf("none"))
 if (popOf("wrath") >= popOf("none"))
   console.log("เตือน: คาถาดำไม่มีผลกับโลก");
 if (missing.length) console.log("เตือน: มีคาถาที่ไม่มีเทสต์ไหนแตะเลย");
+if (throwTotal === 0)
+  console.log("เตือน: ไม่มีใครใช้มือหยิบของขว้างเลย ระบบฟิสิกส์ไม่ถูกทดสอบ");
 // 2 ใน 8 โลกถึงเป้าเป็นเรื่องปกติ ถ้าจำลองแค่ 3 โลกแล้วไม่ถึงเลยก็ยังไม่ได้แปลว่าเป้าพัง
 if (RUNS >= 6 && wonOf("kind") === 0)
   console.log("เตือน: ไม่มีโลกไหนถึงเป้าหมายเลย เป้าอาจสูงเกินไปสำหรับความยาวที่จำลอง");

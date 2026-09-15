@@ -2,6 +2,7 @@ import { mulberry32, type Rng } from "../core/rng";
 import { generateWorld, naturalWeather, stepLand } from "./world";
 import { faithCap, foundVillage, stepVillages, totalPop } from "./village";
 import { reachedGoal } from "./reign";
+import { stepProjectiles } from "./physics";
 import { makeCreature, newGenes, newWeights, stepCreature } from "./creature";
 import { maybeStartDisaster, stepDisasters } from "./disaster";
 import { isWater } from "./biomes";
@@ -16,6 +17,7 @@ export { ACTION_NAME, GENE_NAME, NEED_NAME as CREATURE_NEED_NAME, maxAge, teach,
 export { totalPop, nearestVillage, neediestVillage, maxVillages, faithCap,
          influenceOf, inInfluence, NEED_NAME } from "./village";
 export { computeReign, reachedGoal, goalBelievers, goalProgress } from "./reign";
+export { grabAt, throwTo, dropCarry, whatIsAt, CARRY_NAME } from "./physics";
 export type { Reign } from "./reign";
 export { tileAt, idx } from "./world";
 export { disasterLabel } from "./disaster";
@@ -30,7 +32,8 @@ export function createGame(seed: number): Game {
   const state: GameState = {
     tiles: generateWorld(rng), villages: [], creature: null as never, best: null,
     faith: balance.start.faith, align: 0, tick: 0, year: 0,
-    dead: false, won: false, fx: [], log: [], shake: 0,
+    dead: false, won: false, carrying: null, carryFrom: null, thrown: [],
+    fx: [], log: [], shake: 0,
     disasters: [], lastDisasterTick: 0, landCount: 0,
     seed, rngState: 0, terrainVersion: 1,
   };
@@ -61,6 +64,7 @@ export function stepTick(g: Game): void {
   stepDisasters(s, g.rng, log);
   stepVillages(s, g.rng, log);
   stepCreature(s, g.rng, log);
+  stepProjectiles(s, balance.time.tickSeconds, g.rng, log);
 
   // เพดานศรัทธาผูกกับจำนวนผู้ศรัทธา พอคนตายเพดานก็หดลง
   // ศรัทธาที่สะสมไว้ต้องหดตาม ไม่งั้นจะค้างอยู่เหนือเพดานตลอดไป (npm run sim จับเจอ)
