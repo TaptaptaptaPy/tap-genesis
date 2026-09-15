@@ -57,7 +57,6 @@ describe("บุคลิกของหมู่บ้าน", () => {
   });
 
   it("บุคลิกทั้งสี่ถูกแจกจริงเมื่อมีหมู่บ้านมากพอ", () => {
-    const g = world(10);
     const seen = new Set<string>();
     for (let i = 0; i < TRAIT_IDS.length * 3; i++) seen.add(TRAIT_IDS[i % TRAIT_IDS.length]);
     expect(seen.size).toBe(TRAIT_IDS.length);
@@ -65,8 +64,7 @@ describe("บุคลิกของหมู่บ้าน", () => {
   });
 
   it("traitOf คืนค่าเสมอ ไม่ว่าหมู่บ้านนั้นมาจากเซฟรุ่นไหน", () => {
-    const g = world(10);
-    const v = { ...g.state.villages[0], trait: "ไม่รู้จัก" as never };
+    const v = { ...world(10).state.villages[0], trait: "ไม่รู้จัก" as never };
     expect(traitOf(v).name).toBeTruthy();
   });
 });
