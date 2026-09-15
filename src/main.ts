@@ -1,6 +1,6 @@
 import "./style.css";
 import { FixedLoop } from "./core/loop";
-import { createGame, stepTick, stepEffects, castSpell, teach, command,
+import { createGame, stepTick, stepEffects, castSpell, teach, stroke, smack, command,
          snapshot, restore, saveLooksValid, totalPop, computeReign, placeCreature,
          grabAt, throwTo, dropCarry, whatIsAt, CARRY_NAME, carryLabel, nearestFolk,
          tileAt, advise, adviceEvery,
@@ -67,6 +67,22 @@ const localPos = (e: PointerEvent) => {
   return { x: e.clientX - r.left, y: e.clientY - r.top };
 };
 
+/** ลูบหรือตีสัตว์ด้วยมือจริงๆ ไม่ใช่กดปุ่ม
+ *
+ *  ปุ่มชม/ดุยังอยู่ (และยังจำเป็นบน iPad ที่นิ้วหนากว่าตัวสัตว์บนจอ)
+ *  แต่การลากมือผ่านตัวมันคือท่าที่ Black & White ใช้ และมันสื่อสารคนละอย่างกับการกดปุ่ม
+ *  — ปุ่มคือคำสั่ง การสัมผัสคือความสัมพันธ์
+ */
+const TOUCH = balance.pet;
+let strokeOnCreature = false;   // แตะลงบนตัวมันไหม
+let strokePath = 0;             // ลากไปแล้วกี่พิกเซล
+let strokeDown = 0;             // ลากลงล่างเร็วแค่ไหน (ใช้แยก "ตี" ออกจาก "ลูบ")
+
+/** แตะตรงนี้โดนตัวสัตว์ไหม */
+function hitsCreature(px: number, py: number): boolean {
+  return !!world.pick(px, py, [creature.root]);
+}
+
 cv.addEventListener("pointerdown", (e) => {
   // บาง pointer (เช่นที่ถูกยิงจากเครื่องมืออัตโนมัติ) ทำให้ setPointerCapture โยน error
   // ถ้าไม่ดักไว้ pointerdown จะตายกลางคันและการแตะครั้งนั้นหายไปทั้งครั้ง
@@ -74,7 +90,11 @@ cv.addEventListener("pointerdown", (e) => {
   try { cv.setPointerCapture(e.pointerId); } catch { /* ไม่จำเป็นต้องจับ pointer ก็เล่นได้ */ }
   const p = localPos(e);
   pointers.set(e.pointerId, p);
-  if (pointers.size === 1) { last = p; dragged = false; }
+  if (pointers.size === 1) {
+    last = p; dragged = false;
+    strokeOnCreature = hitsCreature(p.x, p.y);
+    strokePath = 0; strokeDown = 0;
+  }
   if (pointers.size === 2) {
     const [a, b] = [...pointers.values()];
     pinchDist = Math.hypot(a.x - b.x, a.y - b.y);
@@ -95,7 +115,20 @@ cv.addEventListener("pointermove", (e) => {
   if (pointers.size === 1) {
     const dx = p.x - last.x, dy = p.y - last.y;
     if (!dragged && Math.hypot(p.x - last.x, p.y - last.y) > 5) dragged = true;
-    if (dragged) world.orbitBy(dx, dy);
+
+    if (strokeOnCreature) {
+      // ลากอยู่บนตัวมัน — ห้ามหมุนกล้อง ไม่งั้นการลูบจะกลายเป็นการส่ายกล้อง
+      strokePath += Math.hypot(dx, dy);
+      strokeDown = dy > strokeDown ? dy : strokeDown;
+      if (strokePath > TOUCH.strokePx) {
+        strokePath = 0;
+        const log = (m: string) => hud.say(m);
+        if (strokeDown > TOUCH.smackPx) {
+          if (smack(game.state, game.rng, log)) sfx.scold();
+          strokeDown = 0;
+        } else if (stroke(game.state, game.rng, log)) sfx.praise();
+      }
+    } else if (dragged) world.orbitBy(dx, dy);
     last = p;
   }
   hover = world.pick(p.x, p.y, [terrain.ground]);
@@ -108,10 +141,14 @@ const DOUBLE_TAP_MS = 320, DOUBLE_TAP_PX = 28;
 
 cv.addEventListener("pointerup", (e) => {
   const wasSingle = pointers.size === 1;
+  const wasStroking = strokeOnCreature;
+  strokeOnCreature = false;
   const p = localPos(e);
   pointers.delete(e.pointerId);
   if (pointers.size < 2) pinchDist = 0;
   if (!wasSingle || dragged) return;
+  // แตะตัวมันเฉยๆ ก็คือการลูบหนึ่งครั้ง
+  if (wasStroking) { if (stroke(game.state, game.rng, (m) => hud.say(m))) sfx.praise(); return; }
 
   const now = performance.now();
   const near = Math.hypot(p.x - lastTapPos.x, p.y - lastTapPos.y) < DOUBLE_TAP_PX;

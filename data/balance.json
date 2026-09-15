@@ -78,11 +78,32 @@
     "baseChance": 0.24,
     "minTicksBetween": 120,
     "graceTicks": 300,
-    "weights": { "drought": 1.0, "wildfire": 1.0, "plague": 1.0, "flood": 0.8 },
-    "drought": { "radius": 4, "fertMult": 0.35, "durationTicks": 70 },
-    "wildfire": { "radius": 1, "durationTicks": 50 },
-    "plague": { "popMultPerTick": 0.988, "durationTicks": 60, "beliefDrain": 0.0035 },
-    "flood": { "radius": 3, "popMult": 0.82, "fertAfter": 0.22, "durationTicks": 30 }
+    "weights": {
+      "drought": 1.0,
+      "wildfire": 1.0,
+      "plague": 1.0,
+      "flood": 0.8
+    },
+    "drought": {
+      "radius": 4,
+      "fertMult": 0.35,
+      "durationTicks": 70
+    },
+    "wildfire": {
+      "radius": 1,
+      "durationTicks": 50
+    },
+    "plague": {
+      "popMultPerTick": 0.988,
+      "durationTicks": 60,
+      "beliefDrain": 0.0035
+    },
+    "flood": {
+      "radius": 3,
+      "popMult": 0.82,
+      "fertAfter": 0.22,
+      "durationTicks": 30
+    }
   },
   "creature": {
     "_comment": "สัตว์ตัวเดียวที่เป็นของผู้เล่น สอนได้ โตได้ และจำสถานที่ได้",
@@ -139,7 +160,15 @@
     "obedienceFromBond": 0.3,
     "bondPerPraise": 0.05,
     "bondPerScold": -0.02,
-    "bondDecayPerTick": 0.9997
+    "bondDecayPerTick": 0.9997,
+    "_touch": "การลูบและการตี — วงป้อนกลับของ Black & White ที่เคยขาดไป เดิมสอนได้ด้วยปุ่มเท่านั้น และสอนได้เฉพาะตอนมีอะไรให้ตัดสิน ซึ่งแปลว่าไม่มีทาง 'แค่แสดงความรัก' กับมันเลย",
+    "strokeBond": 0.035,
+    "strokeCooldownTicks": 6,
+    "smackBond": -0.06,
+    "smackFearWeight": 0.5,
+    "_touchPx": "ระยะลากบนจอที่นับเป็นการลูบหนึ่งครั้ง และระยะปัดลงที่นับว่าเป็นการตี",
+    "strokePx": 34,
+    "smackPx": 22
   },
   "goal": {
     "_comment": "เกมนี้เคยไม่มีเงื่อนไขชนะเลย มีแต่ล่มสลาย — เล่นไปเรื่อยๆ โดยไม่มีปลายทาง",

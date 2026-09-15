@@ -7,6 +7,7 @@
  *  และเลข "ศรัทธาเต็มคาป ผูกพัน 0%" ที่เคยเห็นทุกโลกก็มาจากการที่ไม่มีใครใช้มัน
  *  ไม่ใช่เพราะสมดุลพัง — ตัวเลขที่อ่านผิดได้แบบนั้นแย่กว่าไม่มีตัวเลขเลย */
 import { createGame, stepTick, stepEffects, totalPop, maxVillages, snapshot, restore,
+       stroke, smack,
          tileAt, bodySize, faithCap, saveLooksValid, castSpell, spellCost, spellFor,
          SPELLS, teach, neediestVillage, isWater, inInfluence, computeReign, goalBelievers,
          grabAt, throwTo, dropCarry, whatIsAt, CARRY_NAME, GENE_NAME, NEED_NAME,
@@ -33,6 +34,7 @@ const GOD = {
   /** สอนสัตว์ถี่สุดทุกกี่ tick — ถ้าไม่คุม ผู้เล่นจำลองจะชมทุกการกระทำ (800 ครั้งต่อโลก)
    *  ซึ่งคนจริงทำไม่ได้ และทำให้ค่าผูกพันเต็มจนดูไม่ออกว่าระบบสอนได้ผลแค่ไหน */
   teachEveryTicks: 12,
+  touchEveryTicks: 31,
 };
 
 type Persona = "none" | "kind" | "wrath";
@@ -43,9 +45,10 @@ const PERSONA_NAME: Record<Persona, string> = {
 // ───────────────────────── ผู้เล่นจำลอง ─────────────────────────
 
 interface GodStats { cast: Record<string, number>; spent: number; denied: number;
-                     praise: number; scold: number; grabbed: number; threw: Record<string, number>; }
+                     praise: number; scold: number; strokes: number; smacks: number;
+                     grabbed: number; threw: Record<string, number>; }
 const newGodStats = (): GodStats =>
-  ({ cast: {}, spent: 0, denied: 0, praise: 0, scold: 0, grabbed: 0, threw: {} });
+  ({ cast: {}, spent: 0, denied: 0, praise: 0, scold: 0, strokes: 0, smacks: 0, grabbed: 0, threw: {} });
 
 /** ผืนน้ำใกล้ที่สุดจากจุดหนึ่ง — เทพพิโรธใช้หาที่ทิ้งคน */
 function findWater(s: GameState, cx: number, cy: number) {
@@ -182,6 +185,14 @@ function divine(g: Game, persona: Persona, st: GodStats, log: (m: string) => voi
       const sign: 1 | -1 = persona === "kind" ? (good ? 1 : -1) : (bad ? 1 : -1);
       if (teach(s, sign, g.rng, log)) { if (sign > 0) st.praise++; else st.scold++; }
     }
+  }
+
+  // เทพเมตตาลูบมันบ้างตอนที่มันไม่ได้ทำอะไร เทพพิโรธก็ตีบ้าง
+  // ไม่ใช่การสอน แต่เป็นสิ่งที่คนเลี้ยงสัตว์ทำจริง และเป็นทางเดียวที่ความผูกพัน
+  // จะขยับได้นอกหน้าต่างตัดสิน — ถ้าไม่เดินเส้นนี้ ระบบสัมผัสจะไม่เคยถูกทดสอบเลย
+  if (c.alive && s.tick % GOD.touchEveryTicks === 0 && c.petCd <= 0) {
+    if (persona === "kind") { if (stroke(s, g.rng, log)) st.strokes++; }
+    else if (smack(s, g.rng, log)) st.smacks++;
   }
 
   if (s.tick % GOD.castEveryTicks !== 0) return;
@@ -412,6 +423,12 @@ const thrownAll = (["none", "kind", "wrath"] as Persona[])
   .flatMap((p) => all[p].flatMap((o) => Object.entries(o.god.threw)))
   .reduce((acc, [k, v]) => { acc[k] = (acc[k] ?? 0) + v; return acc; }, {} as Record<string, number>);
 const throwTotal = Object.values(thrownAll).reduce((a, b) => a + b, 0);
+const personas = ["none", "kind", "wrath"] as Persona[];
+const strokeTotal = personas.reduce((n, p) => n + all[p].reduce((m, o) => m + o.god.strokes, 0), 0);
+const smackTotal = personas.reduce((n, p) => n + all[p].reduce((m, o) => m + o.god.smacks, 0), 0);
+console.log(`มือลูบและตีได้จริงไหม: ลูบรวม ${strokeTotal} ครั้ง · ตีรวม ${smackTotal} ครั้ง`);
+if (strokeTotal === 0 || smackTotal === 0)
+  console.log("  ← มีทางที่ไม่เคยถูกเดินเลย ระบบสัมผัสไม่ได้ถูกทดสอบ");
 console.log(`มือหยิบของขว้างได้จริงไหม: ขว้างรวม ${throwTotal} ครั้ง` +
             (throwTotal ? ` (${Object.entries(thrownAll)
               .map(([k, v]) => `${CARRY_NAME[k as CarryKind]}×${v}`).join(" ")})` : ""));

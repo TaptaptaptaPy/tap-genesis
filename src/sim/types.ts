@@ -75,7 +75,9 @@ export interface Creature {
   tgt: { x: number; y: number } | null;
   lastAct: ActionId | null;
   lastTile: number;
-  fbTimer: number;   // หน้าต่างเวลาที่พระเจ้ายังสอนได้ (tick)
+  fbTimer: number; // หน้าต่างเวลาที่พระเจ้ายังสอนได้ (tick)
+  /** กันลูบรัวๆ — นับถอยหลังเป็น tick */
+  petCd: number;
   eaten: number;
   served: number;
   alive: boolean;

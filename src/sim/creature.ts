@@ -37,7 +37,7 @@ export function makeCreature(s: GameState, genes: Genes, w: Weights, gen: number
   const c: Creature = {
     x: home.x + 1.5, y: home.y + 1.5, gen, genes, w, mem: {},
     energy: 0.85, age: 0, act: null, tgt: null, lastAct: null, lastTile: -1, fbTimer: 0,
-    eaten: 0, served: 0, alive: true, mood: 0, blink: 0, respawnIn: 0,
+    eaten: 0, served: 0, alive: true, mood: 0, blink: 0, respawnIn: 0, petCd: 0,
     bond: 0.3, grow: 0, cmd: null, need: "content", idleTicks: 0, facing: 0,
   };
   const t = tileAt(s.tiles, Math.round(c.x), Math.round(c.y));
@@ -223,6 +223,54 @@ export function teach(s: GameState, sign: 1 | -1, rng: Rng, log: (m: string) => 
   return true;
 }
 
+/** ลูบหัวมัน
+ *
+ *  เดิมความผูกพันขยับได้ทางเดียวคือผ่าน `teach()` ซึ่งใช้ได้เฉพาะตอนมีอะไรให้ตัดสิน
+ *  แปลว่าตลอดเวลาที่เหลือไม่มีทาง "แค่แสดงความรัก" กับมันเลย ทั้งที่นั่นคือครึ่งหนึ่ง
+ *  ของความสัมพันธ์ระหว่างคนกับสัตว์ และเป็นแกนกลางของ Black & White
+ *
+ *  ถ้าลูบตอนที่มันเพิ่งทำอะไรลงไป จะนับเป็นคำชมด้วย — ซึ่งมีราคาของมัน
+ *  ลูบตอนที่มันเพิ่งบุกหมู่บ้าน เท่ากับบอกว่าที่ทำนั้นดีแล้ว
+ *  ความรักกับการสอนจึงไม่ได้แยกจากกันเสมอไป และนั่นคือความตั้งใจ */
+export function stroke(s: GameState, rng: Rng, log: (m: string) => void): boolean {
+  const c = s.creature;
+  if (!c.alive) return false;
+  if (c.petCd > 0) return false;
+  c.petCd = P.strokeCooldownTicks;
+
+  // อยู่ในช่วงที่ตัดสินได้ = เป็นคำชมเต็มรูปแบบ ไม่ใช่แค่ลูบ
+  if (c.lastAct && c.fbTimer > 0) return teach(s, 1, rng, log);
+
+  // ยิ่งผูกพันแล้ว การลูบเพิ่มได้น้อยลง — ความไว้ใจซื้อด้วยการลูบรัวๆ ไม่ได้
+  c.bond = clamp(c.bond + P.strokeBond * (1 - c.bond), 0, 1);
+  c.mood = 1; c.fbTimer = 0;
+  burst(s, c.x, c.y, "#e8c98a", rng);
+  log("ท่านลูบหัวมัน");
+  return true;
+}
+
+/** ตีมัน
+ *
+ *  ตีตอนที่มันเพิ่งทำอะไร = ลงโทษเรื่องนั้น
+ *  ตีตอนที่มันไม่ได้ทำอะไร = มันไม่รู้ว่าโดนเพราะอะไร ได้แต่จำว่า "ตรงนี้เจ็บ"
+ *  ซึ่งเป็นการสอนที่ผิด และเกมปล่อยให้ผิดได้จริง */
+export function smack(s: GameState, rng: Rng, log: (m: string) => void): boolean {
+  const c = s.creature;
+  if (!c.alive) return false;
+  if (c.petCd > 0) return false;
+  c.petCd = P.strokeCooldownTicks;
+
+  if (c.lastAct && c.fbTimer > 0) return teach(s, -1, rng, log);
+
+  c.bond = clamp(c.bond + P.smackBond, 0, 1);
+  // ไม่รู้ว่าโดนเพราะอะไร จำได้แค่ว่าตรงนี้ไม่ปลอดภัย
+  remember(c, Math.floor(c.y) * balance.world.W + Math.floor(c.x), -1, P.smackFearWeight);
+  c.mood = -1; c.fbTimer = 0;
+  burst(s, c.x, c.y, "#9a3030", rng);
+  log("ท่านตีมันทั้งที่มันไม่ได้ทำอะไร");
+  return true;
+}
+
 /** สัตว์ที่อยู่ใกล้พอจะเห็นว่าท่านเพิ่งทำอะไร แล้วเลียนแบบ
  *  นี่คือการเรียนรู้แบบ Black & White ของจริง — เดิมมันเรียนได้จากคำชม/ดุหลังทำเองเท่านั้น
  *  แปลว่าท่านสอนมันได้แค่ "หลังจาก" มันเลือกเอง ไม่ใช่สอนด้วยการทำให้ดู */
@@ -308,6 +356,7 @@ export function stepCreature(s: GameState, rng: Rng, log: (m: string) => void): 
   const g = c.genes;
   c.age++;
   if (c.fbTimer > 0) c.fbTimer--;
+  if (c.petCd > 0) c.petCd--;
   if (c.mood) c.mood *= 0.94;
   if (c.cmd) { c.cmd.ticks--; if (c.cmd.ticks <= 0) c.cmd = null; }
   c.bond *= P.bondDecayPerTick;

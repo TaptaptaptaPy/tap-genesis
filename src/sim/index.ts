@@ -13,7 +13,7 @@ import balance from "../../data/balance.json";
 
 export * from "./types";
 export * from "./miracle";
-export { ACTION_NAME, GENE_NAME, NEED_NAME as CREATURE_NEED_NAME, maxAge, teach, command,
+export { ACTION_NAME, GENE_NAME, NEED_NAME as CREATURE_NEED_NAME, maxAge, teach, stroke, smack, command,
          bodySize, recall, watchMiracle, placeCreature } from "./creature";
 export { totalPop, nearestVillage, neediestVillage, maxVillages, faithCap,
          influenceOf, inInfluence, NEED_NAME } from "./village";
