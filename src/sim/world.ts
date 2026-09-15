@@ -1,7 +1,7 @@
 import type { Rng } from "../core/rng";
 import { lerp } from "../core/rng";
 import { BIOMES, isWater } from "./biomes";
-import type { BiomeId, Tile } from "./types";
+import type { BiomeId, GameState, Tile } from "./types";
 import balance from "../../data/balance.json";
 
 /** value noise: สุ่มค่าบนกริดหยาบ แล้ว interpolate ให้เนียน
@@ -64,7 +64,7 @@ export function generateWorld(rng: Rng): Tile[] {
       if (!isWater(biome)) land++;
       const cap = BIOMES[biome].cap;
       out.push({ x, y, h, biome, cap, fert: cap * (0.8 + 0.2 * rng()),
-                 wet: 0, burn: 0, shade: 0.93 + 0.14 * rng(), village: null });
+                 wet: 0, burn: 0, blight: 0, shade: 0.93 + 0.14 * rng(), village: null });
     }
     const ratio = land / (W * H);
     if (ratio >= minLandRatio && ratio <= maxLandRatio) return out;
@@ -72,19 +72,48 @@ export function generateWorld(rng: Rng): Tile[] {
   return out;
 }
 
+export const idx = (x: number, y: number) => y * balance.world.W + x;
+
 export const tileAt = (tiles: Tile[], x: number, y: number): Tile | null => {
   const { W, H } = balance.world;
   if (x < 0 || y < 0 || x >= W || y >= H) return null;
   return tiles[y * W + x];
 };
 
-export function stepLand(tiles: Tile[]): void {
-  const L = balance.land;
-  for (const t of tiles) {
-    if (t.wet > 0) t.wet = Math.max(0, t.wet - L.wetDecay);
+/** เปลี่ยนชีวนิเวศของช่อง พร้อมอัปเดตเพดานความอุดม และสั่งให้ผู้วาดรีเฟรชพื้นดิน */
+export function setBiome(s: GameState, t: Tile, b: BiomeId) {
+  if (t.biome === b) return;
+  t.biome = b;
+  t.cap = BIOMES[b].cap;
+  s.terrainVersion++;
+}
+
+/** ฝนธรรมชาติตามฤดู — โลกไม่ได้รอผู้เล่นอย่างเดียว */
+export function naturalWeather(s: GameState, rng: Rng): void {
+  const chance = balance.season.rainChance[s.season];
+  if (chance <= 0 || rng() > chance) return;
+  const { W, H } = balance.world;
+  const cx = Math.floor(rng() * W), cy = Math.floor(rng() * H);
+  const r = 2 + Math.floor(rng() * 3);
+  for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
+    if (Math.hypot(dx, dy) > r) continue;
+    const t = tileAt(s.tiles, cx + dx, cy + dy);
+    if (!t) continue;
+    t.wet = Math.min(1, t.wet + 0.35);
+    t.burn = 0;
+  }
+}
+
+export function stepLand(s: GameState): void {
+  const L = balance.land, S = balance.season;
+  const regen = L.regen * S.regenMult[s.season];
+  const wetDecay = L.wetDecay * S.wetDecayMult[s.season];
+  for (const t of s.tiles) {
+    if (t.wet > 0) t.wet = Math.max(0, t.wet - wetDecay);
     if (t.burn > 0) t.burn = Math.max(0, t.burn - L.burnDecay);
+    if (t.blight > 0) t.blight = Math.max(0, t.blight - 0.004);
     if (isWater(t.biome)) continue;
-    const capEff = t.cap * (1 + L.wetCapBonus * t.wet);
-    t.fert = Math.min(1, Math.max(0, t.fert + (capEff - t.fert) * L.regen));
+    const capEff = t.cap * (1 + L.wetCapBonus * t.wet) * (1 - 0.7 * t.blight);
+    t.fert = Math.min(1, Math.max(0, t.fert + (capEff - t.fert) * regen));
   }
 }

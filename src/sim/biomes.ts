@@ -17,4 +17,6 @@ export const BIOMES: Record<BiomeId, BiomeDef> = {
 };
 
 export const isWater = (b: BiomeId) => b === "OCEAN" || b === "SHALLOW";
+/** น้ำตื้นคือที่หากินสำรองของสัตว์ป่า เมื่ออารยธรรมกวาดแผ่นดินไปหมด */
+export const isShallow = (b: BiomeId) => b === "SHALLOW";
 export const isHarsh = (b: BiomeId) => BIOMES[b].harsh === true;

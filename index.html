@@ -7,6 +7,8 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 <meta name="theme-color" content="#07191c" />
 <link rel="manifest" href="/manifest.webmanifest" />
+<link rel="apple-touch-icon" href="/icon-180.png" />
+<link rel="icon" type="image/png" href="/icon-192.png" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Trirong:wght@400;600&family=Noto+Sans+Thai:wght@400;600&display=swap" rel="stylesheet" />
@@ -17,26 +19,38 @@
   <div id="hud">
     <div class="stat faith"><b id="sFaith">0</b><span>ศรัทธา</span></div>
     <div class="stat"><b id="sPop">0</b><span>ผู้ศรัทธา</span></div>
-    <div class="stat"><b id="sEra">เผ่าแรก</b></div>
+    <div class="stat"><b id="sEra">เผ่าแรก</b><span id="sSeason">ฤดูผลิ</span></div>
+    <div class="stat rival hidden" id="rivalStat"><b id="sRival">0</b><span id="sRivalName">คู่แข่ง</span></div>
     <div class="grow"></div>
     <button class="iconbtn" id="bSpeed">1×</button>
+    <button class="iconbtn" id="bFit" title="ดูทั้งแผนที่">⤢</button>
+    <button class="iconbtn" id="bMem" title="แผนที่ความจำของสัตว์">ความจำ</button>
     <button class="iconbtn" id="bGen">จีโนม</button>
-    <button class="iconbtn" id="bNew">โลกใหม่</button>
+    <button class="iconbtn" id="bMenu">เมนู</button>
   </div>
   <div id="align"><div id="alignPin"></div></div>
   <div id="stage">
     <canvas id="cv"></canvas>
     <div id="ticker"></div>
     <div id="genome" class="hidden"></div>
+    <div id="inspect" class="hidden"></div>
+    <div id="menu" class="hidden"></div>
+    <div id="alerts"></div>
   </div>
   <div id="pet">
     <div id="petFace">?</div>
     <div id="petInfo">
       <div id="petAct">—</div>
       <div id="petBars">
-        <div class="bar"><i id="barE"></i></div>
-        <div class="bar"><i id="barA"></i></div>
+        <div class="bar" title="แรง"><i id="barE"></i></div>
+        <div class="bar" title="อายุที่เหลือ"><i id="barA"></i></div>
+        <div class="bar" title="ความผูกพัน"><i id="barB"></i></div>
       </div>
+    </div>
+    <div id="cmds">
+      <button class="cmd" id="cStay" title="ให้อยู่ตรงจุดที่แตะ">อยู่นี่</button>
+      <button class="cmd" id="cEat" title="ให้ไปหากินตรงจุดที่แตะ">กินตรงนี้</button>
+      <button class="cmd" id="cGo" title="เรียกไปยังจุดที่แตะ">ไปตรงนั้น</button>
     </div>
     <button class="teach good" id="bPraise">✦</button>
     <button class="teach bad" id="bScold">✕</button>
