@@ -36,8 +36,13 @@ export interface Folk {
   priest?: boolean;
 }
 
+/** บุคลิกของหมู่บ้าน — ตัวที่ทำให้ "จะช่วยที่ไหนก่อน" เป็นการเลือก ไม่ใช่การไล่เติมตัวเลข */
+export type VillageTrait = "hardy" | "fearful" | "stubborn" | "devout";
+
 export interface Village {
   id: number;
+  /** บุคลิกที่ติดตัวมาตั้งแต่ก่อตั้ง เปลี่ยนไม่ได้ */
+  trait: VillageTrait;
   x: number; y: number;
   pop: number;
   belief: number;

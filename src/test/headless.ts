@@ -12,6 +12,7 @@ import { createGame, stepTick, stepEffects, totalPop, maxVillages, snapshot, res
        stroke, smack,
          tileAt, bodySize, faithCap, saveLooksValid, castSpell, spellCost, spellFor,
          SPELLS, teach, neediestVillage, isWater, inInfluence, computeReign, goalBelievers,
+         TRAITS, TRAIT_IDS,
          grabAt, throwTo, dropCarry, whatIsAt, CARRY_NAME, GENE_NAME, NEED_NAME,
          type CarryKind, type Game, type GameState, type GeneId, type Genes, type NeedId,
          type Village }
@@ -290,6 +291,8 @@ interface Outcome {
   dead: boolean; starved: boolean; year: number; overflow: number;
   won: boolean; reign: string;
   combos: number; priests: number;
+  /** ศรัทธาเฉลี่ยของหมู่บ้านแยกตามบุคลิก — บุคลิกที่ไม่มีผลจะได้เลขเท่ากันหมด */
+  beliefByTrait: Record<string, number[]>;
   /** สภาพจิตใจของสัตว์ตอนจบ และกี่ครั้งที่มันรอให้พระเจ้าละสายตาก่อนค่อยทำ */
   fear: number; curious: number; deceits: number;
   drift: string; disasters: string; god: GodStats;
@@ -332,6 +335,9 @@ function runWorld(seed: number, persona: Persona): Outcome {
     fit: s.best?.fit ?? 0, dead: s.dead, overflow,
     won: s.won, reign: computeReign(s).title,
     combos: s.combos,
+    beliefByTrait: s.villages.reduce((m, v) => {
+      (m[v.trait] ??= []).push(v.belief); return m;
+    }, {} as Record<string, number[]>),
     fear: s.creature.fear, curious: s.creature.curious, deceits: s.deceits,
     priests: s.villages.reduce((n, v) => n + v.folk.reduce((m, f) => m + (f.priest ? 1 : 0), 0), 0),
     starved: s.villages.some((v) => v.needs.food < 0.5), year: s.year,
@@ -462,6 +468,31 @@ const personas = ["none", "kind", "wrath"] as Persona[];
 const strokeTotal = personas.reduce((n, p) => n + all[p].reduce((m, o) => m + o.god.strokes, 0), 0);
 const smackTotal = personas.reduce((n, p) => n + all[p].reduce((m, o) => m + o.god.smacks, 0), 0);
 console.log(`มือลูบและตีได้จริงไหม: ลูบรวม ${strokeTotal} ครั้ง · ตีรวม ${smackTotal} ครั้ง`);
+
+{
+  // บุคลิกของหมู่บ้านต้องกระจายครบและต้องให้ผลต่างกันจริง
+  // ถ้าศรัทธาเฉลี่ยของทุกบุคลิกเท่ากัน แปลว่าตัวคูณไม่ได้ถูกใช้ที่ไหนเลย
+  const byTrait: Record<string, number[]> = {};
+  for (const p of personas) for (const o of all[p])
+    for (const [t, xs] of Object.entries(o.beliefByTrait)) (byTrait[t] ??= []).push(...xs);
+  const avg = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / Math.max(1, xs.length);
+  const rows = TRAIT_IDS.map((t) => `${TRAITS[t].name} ${avg(byTrait[t] ?? []).toFixed(2)}`);
+  console.log(`บุคลิกหมู่บ้านมีผลจริงไหม: ศรัทธาเฉลี่ย ${rows.join(" · ")}`);
+  // แยกดูเฉพาะโลกที่มีเทพเมตตา — บุคลิกบางอย่างมีความหมายเฉพาะตอนที่มีคนดูแล
+  const kindOnly: Record<string, number[]> = {};
+  for (const o of all.kind) for (const [t, xs] of Object.entries(o.beliefByTrait))
+    (kindOnly[t] ??= []).push(...xs);
+  console.log(`  เฉพาะโลกที่มีเทพเมตตา: ` +
+    TRAIT_IDS.map((t) => `${TRAITS[t].name} ${avg(kindOnly[t] ?? []).toFixed(2)}`).join(" · "));
+  const missing = TRAIT_IDS.filter((t) => !(byTrait[t] ?? []).length);
+  if (missing.length)
+    console.log(`เตือน: บุคลิก ${missing.map((t) => TRAITS[t].name).join(" ")} ไม่เคยถูกแจกให้หมู่บ้านไหนเลย`);
+  // วัดจากโลกที่มีเทพเมตตาเท่านั้น — โลกที่ถูกปล่อยทิ้งกับโลกของเทพพิโรธ
+  // กดทุกหมู่บ้านลงไปกองรวมกันจนบุคลิกอ่านไม่ออก ซึ่งเป็นเรื่องปกติ ไม่ใช่ความผิดพลาด
+  const vals = TRAIT_IDS.map((t) => avg(kindOnly[t] ?? [])).filter((x) => x > 0);
+  if (vals.length > 1 && Math.max(...vals) - Math.min(...vals) < 0.05)
+    console.log("เตือน: ทุกบุคลิกได้ศรัทธาเท่ากันหมดแม้ในโลกที่มีเทพดูแล ตัวคูณของบุคลิกไม่ได้ถูกใช้จริง");
+}
 
 const comboTotal = personas.reduce((n, p) => n + all[p].reduce((m, o) => m + o.combos, 0), 0);
 const avgOf = (p: Persona, f: (o: Outcome) => number) =>

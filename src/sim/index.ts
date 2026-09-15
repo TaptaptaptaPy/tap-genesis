@@ -16,7 +16,7 @@ export * from "./miracle";
 export { ACTION_NAME, GENE_NAME, NEED_NAME as CREATURE_NEED_NAME, maxAge, teach, stroke, smack, command,
          bodySize, recall, watchMiracle, placeCreature } from "./creature";
 export { totalPop, nearestVillage, neediestVillage, maxVillages, faithCap,
-         influenceOf, inInfluence, NEED_NAME } from "./village";
+         influenceOf, inInfluence, NEED_NAME, traitOf, TRAITS, TRAIT_IDS } from "./village";
 export { computeReign, reachedGoal, goalBelievers, goalProgress } from "./reign";
 export { grabAt, throwTo, dropCarry, whatIsAt, CARRY_NAME, carryLabel } from "./physics";
 export { nearestFolk, folkTarget, JOB_NAME, reseedFolkIds } from "./folk";

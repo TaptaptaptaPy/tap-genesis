@@ -1,6 +1,6 @@
 import { ACTION_NAME, CREATURE_NEED_NAME, GENE_NAME, NEED_NAME, SPELLS, spellCost, spellFor,
          bodySize, maxAge, totalPop, faithCap, neediestVillage, tileAt, BIOMES, disasterLabel,
-         goalBelievers,
+         goalBelievers, traitOf,
          type GameState, type NeedId, type Village } from "../sim/index";
 import { sfx } from "../core/audio";
 import balance from "../../data/balance.json";
@@ -208,7 +208,10 @@ export class Hud {
         <b>${pct(val)}</b></div>`;
     const needs = (["food", "wood", "shelter"] as NeedId[])
       .map((k) => bar(NEED_NAME[k], v.needs[k])).join("");
-    return `<hr><h3>หมู่บ้าน${v.name}</h3>
+    // บุคลิกต้องมองเห็นได้ ไม่งั้นผู้เล่นจะไม่มีทางรู้ว่าทำไมหมู่บ้านนี้ถึงไม่เหมือนหมู่บ้านนั้น
+    const tr = traitOf(v);
+    return `<hr><h3>หมู่บ้าน${v.name}<small> · ${tr.name}</small></h3>
+      <div class="sub">${tr.blurb}</div>
       <div class="kv"><span>ผู้คน</span><b>${Math.round(v.pop)}</b></div>
       <div class="kv"><span>ศรัทธาในตัวท่าน</span><b>${pct(v.belief)}</b></div>
       ${needs}

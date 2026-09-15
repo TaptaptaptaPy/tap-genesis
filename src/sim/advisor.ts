@@ -1,4 +1,4 @@
-import { totalPop, neediestVillage, faithCap, NEED_NAME } from "./village";
+import { totalPop, neediestVillage, faithCap, NEED_NAME, traitOf } from "./village";
 import { spellFor, spellCost, SPELLS } from "./miracle";
 import { goalBelievers } from "./reign";
 import type { GameState } from "./types";
@@ -43,9 +43,12 @@ export function advise(s: GameState): [Advice, Advice] | null {
     cruel = "โรคคัดคนอ่อนแอออกไปเอง ท่านไม่ต้องเปลืองศรัทธา";
   } else if (needy && needy.ask) {
     const sp = spellFor(needy.ask);
-    kind = `${needy.name}ขาด${NEED_NAME[needy.ask]} ` +
+    // บอกบุคลิกไปด้วย เพราะมันคือเหตุผลว่าทำไมควรไปที่นี่ก่อนที่อื่น
+    kind = `${needy.name} (${traitOf(needy).name}) ขาด${NEED_NAME[needy.ask]} ` +
            (sp ? `ร่าย${sp.name}ลงไปสิ` : "ไปดูพวกเขาหน่อย");
-    cruel = "ปล่อยให้เขาขอไปก่อน คนที่หิวจะสวดดังกว่าคนที่อิ่ม";
+    cruel = needy.trait === "fearful"
+      ? `${needy.name}ขี้กลัวอยู่แล้ว ปล่อยให้เขากลัวต่อไปอีกหน่อยสิ`
+      : "ปล่อยให้เขาขอไปก่อน คนที่หิวจะสวดดังกว่าคนที่อิ่ม";
   } else if (poor) {
     kind = "ศรัทธาไม่พอร่ายคาถาแล้ว หยิบอาหารไปวางให้เขาด้วยมือก็ได้";
     cruel = "ศรัทธาหมดก็หยิบก้อนหินสิ มือของท่านไม่เคยขออนุญาตใคร";

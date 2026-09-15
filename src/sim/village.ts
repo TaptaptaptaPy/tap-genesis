@@ -2,7 +2,7 @@ import { clamp, pick, type Rng } from "../core/rng";
 import { isWater } from "./biomes";
 import { tileAt } from "./world";
 import { stepFolk } from "./folk";
-import type { GameState, NeedId, Village } from "./types";
+import type { GameState, NeedId, Village, VillageTrait } from "./types";
 import balance from "../../data/balance.json";
 
 const NAMES = ["อรุณ","ผาแดง","ลำธาร","ไพรใหญ่","ทุ่งทอง","หินผา","สายลม","ปลายน้ำ",
@@ -16,12 +16,28 @@ export const NEED_NAME: Record<NeedId, string> = {
 export const maxVillages = (s: GameState) =>
   Math.max(2, Math.floor(s.landCount / balance.village.tilesPerVillage));
 
+/** บุคลิกของหมู่บ้านและตัวคูณของมัน — อ่านจาก balance.json ที่เดียว */
+/** ตัวคูณของบุคลิก — แต่ละตัวแตะคนละจุด และชื่อต้องตรงกับสิ่งที่มันทำจริง
+ *  `driftMult` คือ *ความเร็ว* ที่ศรัทธาขยับ ไม่ใช่เพดานของมัน
+ *  ตอนแรกตั้งชื่อว่า beliefMult แล้วคาดว่าหมู่บ้านศรัทธาแรงจะเชื่อมากกว่า
+ *  แต่เร็วขึ้นแปลว่าไปถึงเป้าเร็วขึ้นเฉยๆ ไม่ได้ยกเป้า — ต้องใช้ `faithFloor` ถึงจะยก */
+export const TRAITS = balance.village.traits as Record<VillageTrait, {
+  name: string; blurb: string;
+  needMult: number; driftMult: number; faithFloor: number; aweMult: number; growthMult: number;
+}>;
+export const TRAIT_IDS = Object.keys(TRAITS) as VillageTrait[];
+export const traitOf = (v: Village) => TRAITS[v.trait] ?? TRAITS.hardy;
+
 export function foundVillage(s: GameState, x: number, y: number, rng: Rng): Village | null {
   const t = tileAt(s.tiles, x, y);
   if (!t || isWater(t.biome) || t.village) return null;
   if (s.villages.length >= maxVillages(s)) return null;
   const v: Village = {
     id: s.villages.length + 1 + Math.floor(rng() * 1000),
+    // บุคลิกมาจาก id ที่สุ่มไว้อยู่แล้ว ไม่เรียก rng() เพิ่ม
+    // ถ้าเรียกเพิ่ม สายสุ่มทั้งเส้นจะเลื่อน แล้ว seed เดิมจะไม่ได้โลกเดิมอีกต่อไป
+    // ซึ่งแปลว่าเทียบตัวเลขสมดุลกับของเดิมไม่ได้เลย
+    trait: TRAIT_IDS[(s.villages.length + 1) % TRAIT_IDS.length],
     x, y, pop: balance.start.villagePop, belief: 0.35, name: pick(NAMES, rng), age: 0,
     wood: 4, shelter: balance.start.villagePop * balance.needs.shelterNeedPerPop,
     needs: { food: 1, wood: 1, shelter: 1 },
@@ -54,7 +70,10 @@ function bestSpot(s: GameState, cx: number, cy: number, rad: number, rng: Rng) {
   return bv > 0.6 ? bs : null;
 }
 
-export function addAwe(v: Village, amount: number) { v.awe = clamp(v.awe + amount, 0, 1); }
+export function addAwe(v: Village, amount: number) {
+  // ปาฏิหาริย์กระทบหมู่บ้านขี้กลัวแรงกว่าหมู่บ้านที่ขยันทำกิน ทั้งทางดีและทางร้าย
+  v.awe = clamp(v.awe + amount * traitOf(v).aweMult, 0, 1);
+}
 
 /** รัศมีที่หมู่บ้านนี้แผ่ความศรัทธาออกไป = เขตที่พระเจ้าลงมือได้
  *  ยิ่งคนเชื่อมากและมีคนมาก เขตยิ่งกว้าง — อำนาจจึงมาจากการดูแลคน ไม่ใช่มีมาแต่แรก */
@@ -108,7 +127,10 @@ export function stepVillages(s: GameState, rng: Rng, log: (m: string) => void): 
     v.wood = Math.min(N.woodStoreMax, v.wood + woodSum);
     const woodTaken = Math.min(v.wood, woodNeed);
     v.wood -= woodTaken;
-    const woodNow = woodNeed > 0 ? clamp(woodTaken / woodNeed, 0, 1) : 1;
+    // บุคลิกมีผลกับไม้และที่อยู่ ไม่ใช่กับอาหาร
+    // อาหารคือสิ่งที่ตัดสินว่าหมู่บ้านรอดไหมในโลกที่ไม่มีเทพ ถ้าแตะตรงนั้น
+    // เส้นฐาน "ปล่อยทิ้ง" จะขยับ แล้วบรรทัด "เมตตา vs ปล่อยทิ้ง" จะอ่านไม่ได้อีก
+    const woodNow = woodNeed > 0 ? clamp((woodTaken / woodNeed) * traitOf(v).needMult, 0, 1) : 1;
     v.needs.wood += (woodNow - v.needs.wood) * N.smoothing;
 
     const shelterNeed = v.pop * N.shelterNeedPerPop;
@@ -118,7 +140,7 @@ export function stepVillages(s: GameState, rng: Rng, log: (m: string) => void): 
       v.shelter += build;
     }
     v.shelter = Math.max(0, v.shelter - v.shelter * N.shelterDecayPerTick);
-    const shelterNow = shelterNeed > 0 ? clamp(v.shelter / shelterNeed, 0, 1) : 1;
+    const shelterNow = shelterNeed > 0 ? clamp((v.shelter / shelterNeed) * traitOf(v).needMult, 0, 1) : 1;
     v.needs.shelter += (shelterNow - v.needs.shelter) * N.smoothing;
 
     const unmet = (1 - v.needs.wood) * 0.5 + (1 - v.needs.shelter) * 0.5;
@@ -131,16 +153,17 @@ export function stepVillages(s: GameState, rng: Rng, log: (m: string) => void): 
       v.awe = Math.max(0, v.awe - balance.disaster.plague.beliefDrain);
       growth = Math.min(growth, 0);
     }
-    v.pop = clamp(v.pop + growth, 0, cap);
+    v.pop = clamp(v.pop + growth * (growth > 0 ? traitOf(v).growthMult : 1), 0, cap);
 
     // ศรัทธา = ความต้องการที่ถูกเติมเต็ม + ความทรงจำถึงปาฏิหาริย์
     v.awe *= N.aweDecayPerTick;
     const target = clamp(
-      N.beliefFloor + v.needs.food * N.beliefFromFood + v.needs.wood * N.beliefFromWood +
+      N.beliefFloor + traitOf(v).faithFloor + v.needs.food * N.beliefFromFood + v.needs.wood * N.beliefFromWood +
       v.needs.shelter * N.beliefFromShelter + v.awe * N.beliefFromAwe +
       // คนที่พระเจ้าเคยอุ้มแล้ววางคืน เล่าสิ่งที่เห็นให้คนทั้งหมู่บ้านฟัง
       priestsOf(v) * balance.folk.priestBelief, 0, 1);
-    v.belief += (target - v.belief) * V.beliefDrift;
+    // หมู่บ้านดื้อขยับความเชื่อช้ากว่าทั้งขาขึ้นและขาลง หมู่บ้านศรัทธาแรงขยับเร็วทั้งสองทาง
+    v.belief += (target - v.belief) * V.beliefDrift * traitOf(v).driftMult;
 
     s.faith = Math.min(s.faith + v.pop * v.belief * V.faithPerBeliever, faithCap(s));
 
