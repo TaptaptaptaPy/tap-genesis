@@ -3,7 +3,7 @@ import { clone as cloneSkeleton } from "three/examples/jsm/utils/SkeletonUtils.j
 import { loadRigged, flattenToLambert, normalise, type Rigged } from "./gltf";
 import models from "../../data/models.json";
 import type { Folk, GameState, Village } from "../sim/types";
-import { groundY } from "./terrain3d";
+import { groundY, standOn } from "./terrain3d";
 
 /** ชาวบ้านที่มองเห็นได้
  *
@@ -38,7 +38,7 @@ export class Villagers3D {
    *  หนึ่งคนหนึ่งร่าง เพราะแต่ละคนทำงานคนละอย่างจึงเล่นคนละท่า
    *  InstancedMesh ทำแบบนั้นไม่ได้ มันวาดรูปทรงเดียวกันทุกตัว */
   private rigSrc: Rigged | null = null;
-  private bodies: { root: THREE.Object3D; rig: Rigged; clip: string }[] = [];
+  private bodies: { root: THREE.Object3D; rig: Rigged; clip: string; facing: number }[] = [];
   readonly ready: Promise<void>;
 
   /** หันหัวก่อน (Y) แล้วค่อยเอนตัวไปข้างหน้า (X) — ลำดับ XYZ ปกติจะเอนผิดทาง */
@@ -142,7 +142,7 @@ export class Villagers3D {
         update(d) { mixer.update(d); },
       };
       this.group.add(root);
-      this.bodies.push({ root, rig, clip: "" });
+      this.bodies.push({ root, rig, clip: "", facing: 0 });
     }
 
     const b = this.bodies[k];
@@ -153,7 +153,9 @@ export class Villagers3D {
     b.root.visible = true;
     b.root.position.set(f.x, groundY(s, f.x, f.y), f.y);
     b.root.scale.setScalar(FOLK_SCALE);
-    if (moving) b.root.rotation.y = Math.atan2(dx, dy);
+    if (moving) b.facing = Math.atan2(dx, dy);
+    // คนยืนตรงกว่าพื้นเสมอ เอียงแค่ครึ่งเดียวของความชันจริง
+    standOn(b.root, s, f.x, f.y, b.facing, 0.5);
 
     const want = this.clipFor(f, moving);
     if (want !== b.clip) { b.rig.play(want); b.clip = want; }

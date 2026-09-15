@@ -241,3 +241,34 @@ export function sampleH(s: GameState, x: number, z: number): number {
 }
 export const groundY = (s: GameState, x: number, z: number) => worldY(sampleH(s, x, z));
 export { HEIGHT_SCALE };
+
+const UP = /* @__PURE__ */ new THREE.Vector3(0, 1, 0);
+const _n = /* @__PURE__ */ new THREE.Vector3();
+const _qa = /* @__PURE__ */ new THREE.Quaternion();
+const _qy = /* @__PURE__ */ new THREE.Quaternion();
+
+/** เวกเตอร์ตั้งฉากกับผิวพื้นที่จุดนี้
+ *  วัดความสูงสี่จุดรอบตัวแล้วหาความชัน ไม่ได้อ่านจาก normal ของ mesh
+ *  เพราะ mesh ถูกทำให้เรียบ (`computeVertexNormals`) ค่าที่ได้จะนุ่มเกินจริง */
+export function groundNormal(s: GameState, x: number, z: number, step = 0.4): THREE.Vector3 {
+  const l = worldY(sampleH(s, x - step, z)), r = worldY(sampleH(s, x + step, z));
+  const d = worldY(sampleH(s, x, z - step)), u = worldY(sampleH(s, x, z + step));
+  return _n.set(l - r, 2 * step, d - u).normalize();
+}
+
+/** วางของให้ยืนบนพื้นโดยเอียงตามความชัน
+ *
+ *  ของทุกชิ้นในฉากเคยหมุนแค่แกน Y อย่างเดียว บนที่ราบไม่มีใครสังเกต
+ *  แต่บนไหล่เขาทุกอย่างจะยืนตรงแหน่วขณะที่พื้นเอียง กระท่อมลอยข้างหนึ่ง สัตว์เหมือนลอยอยู่
+ *
+ *  `lean` คือเอียงตามพื้นแค่ไหน — คนยืนตรงกว่าพื้นเสมอ (คนจริงก็ทำแบบนั้น)
+ *  ส่วนสิ่งปลูกสร้างเอียงตามพื้นมากกว่า เพราะมันถูกสร้างคร่อมความชันนั้นจริงๆ
+ */
+export function standOn(obj: THREE.Object3D, s: GameState,
+                        x: number, z: number, facing: number, lean = 1): void {
+  const n = groundNormal(s, x, z);
+  _qa.setFromUnitVectors(UP, n);
+  if (lean < 1) _qa.slerp(_qy.identity(), 1 - lean);
+  _qy.setFromAxisAngle(UP, facing);
+  obj.quaternion.copy(_qa).multiply(_qy);
+}

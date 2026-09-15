@@ -86,3 +86,40 @@ test("เปลี่ยนงานของชาวบ้าน แล้ว�
   expect(seen["นอนซม"]).toBe("sit");
   expect(seen["ยืนเฉยๆ"]).toBe("idle");
 });
+
+/** ของทุกชิ้นต้องเอียงตามความชันของพื้น
+ *  เคยหมุนแค่แกน Y อย่างเดียว บนที่ราบไม่มีใครสังเกต แต่บนไหล่เขามันลอย */
+test("สัตว์กับชาวบ้านต้องเอียงตามพื้น ไม่ใช่ยืนตรงบนที่ลาด", async ({ page }) => {
+  await page.goto("/?seed=20260915&t=0.3");
+  await page.waitForFunction(() => (window as any).__genesis?.propsReady === true);
+
+  const r = await page.evaluate(async () => {
+    const g = (window as any).__genesis;
+    const t = await import("/src/render/terrain3d.ts");
+    const s = g.game.state;
+
+    // หาจุดที่ชันที่สุดบนเกาะ แล้วดูว่าเวกเตอร์ตั้งฉากเอียงจริงไหม
+    let steep = { x: 0, z: 0, tilt: 0 };
+    for (let z = 2; z < 22; z++) for (let x = 2; x < 22; x++) {
+      const n = t.groundNormal(s, x + 0.5, z + 0.5);
+      const tilt = 1 - n.y;                 // 0 = ราบ, มากขึ้น = ชันขึ้น
+      if (tilt > steep.tilt) steep = { x: x + 0.5, z: z + 0.5, tilt };
+    }
+
+    const obj = g.creature.root.clone();
+    t.standOn(obj, s, steep.x, steep.z, 0, 1);
+    // แกน Y ของวัตถุหลังหมุนแล้ว ต้องไม่ชี้ขึ้นตรงๆ อีกต่อไป
+    const up = { x: 0, y: 1, z: 0 };
+    const q = obj.quaternion;
+    // หมุนเวกเตอร์ (0,1,0) ด้วย quaternion
+    const ix = q.w * up.x + q.y * up.z - q.z * up.y;
+    const iy = q.w * up.y + q.z * up.x - q.x * up.z;
+    const iz = q.w * up.z + q.x * up.y - q.y * up.x;
+    const iw = -q.x * up.x - q.y * up.y - q.z * up.z;
+    const ly = iy * q.w + iw * -q.y + iz * -q.x - ix * -q.z;
+    return { tilt: steep.tilt, localUpY: ly };
+  });
+
+  expect(r.tilt, "เกาะนี้ราบไปหมด ทดสอบไม่ได้").toBeGreaterThan(0.02);
+  expect(r.localUpY, "หมุนแล้วแกนขึ้นยังชี้ตรงเป๊ะ แปลว่าไม่ได้เอียงตามพื้น").toBeLessThan(0.999);
+});

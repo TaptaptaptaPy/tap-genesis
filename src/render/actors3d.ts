@@ -3,7 +3,7 @@ import { bodySize } from "../sim/creature";
 import { influenceOf } from "../sim/village";
 import balance from "../../data/balance.json";
 import type { Creature, GameState, NeedId, Village } from "../sim/types";
-import { groundY } from "./terrain3d";
+import { groundY, standOn } from "./terrain3d";
 import { HUT_R, villageFootprint, villageGrow } from "./layout";
 export { villageFootprint, villageGrow };
 import { bakedGeometry, flattenToLambert, loadRigged, normalise, type Rigged } from "./gltf";
@@ -101,6 +101,7 @@ export class Villages3D {
   private build(s: GameState, v: Village): VillageParts {
     const root = new THREE.Group();
     root.position.set(v.x + 0.5, groundY(s, v.x + 0.5, v.y + 0.5) + 0.08, v.y + 0.5);
+    standOn(root, s, v.x + 0.5, v.y + 0.5, 0, 0.85);
 
     const huts = new THREE.Group();
     const roofMat = new THREE.MeshLambertMaterial({ color: 0xa8713f });
@@ -320,7 +321,7 @@ export class Creature3D {
     this.root.scale.setScalar(scale);
     const y = groundY(s, c.x + 0.5, c.y + 0.5);
     this.root.position.set(c.x + 0.5, y, c.y + 0.5);
-    this.root.rotation.y = c.facing;
+    standOn(this.root, s, c.x + 0.5, c.y + 0.5, c.facing, 0.75);
 
     if (this.rig) {
       const want = this.wanted(c);
