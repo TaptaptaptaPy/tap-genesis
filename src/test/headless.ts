@@ -297,6 +297,8 @@ interface Outcome {
   fear: number; curious: number; deceits: number;
   /** ผู้กำกับส่งภัยมากี่ครั้ง และแรงกดดันเฉลี่ยตอนที่มันส่ง */
   disasterCount: number;
+  /** ท่าต่อเนื่องที่สอนได้ และคู่ที่ถูกนับไปแล้วในรอบนี้ */
+  chains: number; pairProgress: number;
   /** แรงกดดันตอนที่ภัยลงจริง เทียบกับแรงกดดันตลอดทั้งเกม */
   firePressure: number[]; pressureSamples: number[];
   drift: string; disasters: string; god: GodStats;
@@ -350,6 +352,8 @@ function runWorld(seed: number, persona: Persona): Outcome {
     }, {} as Record<string, number[]>),
     fear: s.creature.fear, curious: s.creature.curious, deceits: s.deceits,
     firePressure, pressureSamples,
+    chains: Object.keys(s.creature.chain).length,
+    pairProgress: Object.values(s.creature.pairs).reduce((a, b) => a + b, 0),
     disasterCount: s.log.filter((l) => /ภัยแล้ง|ไฟป่า|โรคระบาด|อุทกภัย|แผ่นดินแตก|น้ำหลาก/.test(l)).length,
     priests: s.villages.reduce((n, v) => n + v.folk.reduce((m, f) => m + (f.priest ? 1 : 0), 0), 0),
     starved: s.villages.some((v) => v.needs.food < 0.5), year: s.year,
@@ -496,6 +500,18 @@ const smackTotal = personas.reduce((n, p) => n + all[p].reduce((m, o) => m + o.g
     console.log("เตือน: ภัยลงตอนที่เครียดพอๆ กับค่าเฉลี่ย ผู้กำกับไม่ได้เลือกจังหวะอะไรเลย");
   if (atFire.some((x) => x > balance.director.holdAbove + 0.001))
     console.log("เตือน: มีภัยลงตอนที่แรงกดดันเกินเกณฑ์หยุด ซึ่งไม่ควรเกิดขึ้นได้เลย");
+}
+
+{
+  // ผู้เล่นจำลองชมแค่ราว 9 ครั้งต่อโลก และไม่ได้ *ตั้งใจ* สอนท่าต่อเนื่อง
+  // สิ่งที่วัดได้ที่นี่คือ "กลไกนี้เดินผ่านตอนเล่นจริงไหม" ไม่ใช่ "สอนสำเร็จกี่ท่า"
+  // ส่วนที่ว่าสอนครบแล้วได้ท่าจริงไหม อยู่ใน src/sim/learn.test.ts
+  const ch = personas.reduce((n, p) => n + all[p].reduce((m, o) => m + o.chains, 0), 0);
+  const pr = personas.reduce((n, p) => n + all[p].reduce((m, o) => m + o.pairProgress, 0), 0);
+  console.log(`ท่าหลายขั้นเดินผ่านไหม: คู่ที่ถูกนับรวม ${pr} ครั้ง · สอนสำเร็จ ${ch} ท่า` +
+              ` (ต้องชมคู่เดิมครบ ${balance.pet.chainPraises} ครั้ง)`);
+  if (pr === 0)
+    console.log("เตือน: ไม่มีคู่ไหนถูกนับเลยสักครั้ง กลไกท่าต่อเนื่องไม่ได้เดินผ่านตอนเล่นจริง");
 }
 
 console.log(`มือลูบและตีได้จริงไหม: ลูบรวม ${strokeTotal} ครั้ง · ตีรวม ${smackTotal} ครั้ง`);

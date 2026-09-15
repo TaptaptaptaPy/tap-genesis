@@ -168,6 +168,12 @@ export class Hud {
     // สภาพจิตใจต้องมองเห็นได้ ไม่งั้นผู้เล่นจะไม่มีทางรู้ว่าสอนไม่เข้าเพราะอะไร
     h += `<div class="sub">ความกลัว ${pct(c.fear)} · ความอยากรู้ ${pct(c.curious)}` +
          `${c.fear >= balance.pet.deceitFearAt ? " · <b>มันเริ่มรอให้ท่านหันหลังก่อน</b>" : ""}</div>`;
+    // ท่าที่สอนไว้ต้องมองเห็น ไม่งั้นผู้เล่นจะไม่รู้ว่าเคยสอนอะไรสำเร็จไปแล้วบ้าง
+    const chains = Object.entries(c.chain) as [string, string][];
+    if (chains.length)
+      h += `<div class="sub">ท่าที่สอนไว้: ` +
+           chains.map(([a, b]) => `${ACTION_NAME[a as keyof typeof ACTION_NAME]}→${ACTION_NAME[b as keyof typeof ACTION_NAME]}`).join(" · ") +
+           `</div>`;
     if (s.deceits > 0)
       h += `<div class="sub">แอบทำตอนท่านไม่ได้มอง ${s.deceits} ครั้ง</div>`;
     for (const k of Object.keys(c.genes) as (keyof typeof c.genes)[]) {

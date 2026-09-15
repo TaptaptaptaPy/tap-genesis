@@ -109,6 +109,14 @@ export interface Creature {
   curious: number;
   /** สิ่งที่มันอยากทำแต่กำลังรอให้พระเจ้าละสายตาก่อน */
   hiding: ActionId | null;
+  /** ท่าที่มันเรียนว่า "ทำ ก. แล้วต่อด้วย ข." — สอนได้ด้วยการชมสองครั้งติดที่คู่เดิม */
+  chain: Partial<Record<ActionId, ActionId>>;
+  /** ท่าที่เพิ่งทำก่อนหน้าท่าปัจจุบัน — ใช้ประกอบคู่ตอนพระเจ้าชม */
+  pairFrom: ActionId | null;
+  /** ชมคู่ไหนไปแล้วกี่ครั้ง คีย์คือ "ก>ข" — ไม่ต้องติดกัน เพราะคนสอนจริงก็ชมอย่างอื่นสลับไปด้วย */
+  pairs: Record<string, number>;
+  /** ท่าที่เพิ่งต่อไปแล้ว กันไม่ให้วนเป็นลูปไม่รู้จบ */
+  chainDone: ActionId | null;
   grow: number;      // ขนาดที่โตขึ้นจากการกิน
   cmd: Command | null;
   need: CreatureNeed;

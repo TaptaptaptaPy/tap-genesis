@@ -37,7 +37,7 @@ export function makeCreature(s: GameState, genes: Genes, w: Weights, gen: number
   const c: Creature = {
     x: home.x + 1.5, y: home.y + 1.5, gen, genes, w, mem: {}, vmem: {},
     energy: 0.85, age: 0, act: null, tgt: null, lastAct: null, lastTile: -1, fbTimer: 0,
-    eaten: 0, served: 0, alive: true, mood: 0, blink: 0, fear: 0, curious: 0, hiding: null, respawnIn: 0, petCd: 0, lastVillage: -1, intent: null, intentTicks: 0,
+    eaten: 0, served: 0, alive: true, mood: 0, blink: 0, fear: 0, curious: 0, hiding: null, chain: {}, pairFrom: null, pairs: {}, chainDone: null, respawnIn: 0, petCd: 0, lastVillage: -1, intent: null, intentTicks: 0,
     bond: 0.3, grow: 0, cmd: null, need: "content", idleTicks: 0, facing: 0,
   };
   const t = tileAt(s.tiles, Math.round(c.x), Math.round(c.y));
@@ -142,6 +142,20 @@ function startAction(s: GameState, c: Creature, rng: Rng) {
       return;
     }
   }
+  // ท่าที่สอนไว้ว่า "ทำอันนี้เสร็จแล้วต่อด้วยอันนั้น" — ทำเลย ไม่ต้องคิดใหม่
+  // ต้องอยู่ก่อนทุกอย่าง เพราะมันคือสิ่งที่พระเจ้าสอนไว้โดยตรง หนักกว่าความอยากของมันเอง
+  const next = c.lastAct ? c.chain[c.lastAct] : undefined;
+  if (next && c.chainDone !== c.lastAct) {
+    c.chainDone = c.lastAct;
+    c.intent = null; c.intentTicks = 0;
+    c.act = next;
+    const cv = nearestVillage(s, c.x, c.y);
+    c.tgt = next === "forage" ? (bestFood(s, c, 3, rng) ?? randLand(s, c, rng))
+          : next === "wander" ? randLand(s, c, rng)
+          : cv ? { x: cv.x, y: cv.y } : randLand(s, c, rng);
+    return;
+  }
+
   const a = chooseAction(s, c, rng);
 
   // การหลอกลวง — ปลายทางของการลงโทษหนักเกินไป
@@ -247,6 +261,7 @@ function resolveAction(s: GameState, c: Creature, rng: Rng, log: (m: string) => 
     remember(c, here, t && !isWater(t.biome) ? t.fert * 1.2 - 0.3 : -0.4, 0.4);
   }
 
+  c.pairFrom = c.lastAct;
   c.lastAct = a;
   c.lastTile = here;
   // หมู่บ้านที่เกี่ยวข้องกับสิ่งที่เพิ่งทำ — บุก ช่วย หรือบูชา ล้วนผูกกับหมู่บ้านใดหมู่บ้านหนึ่ง
@@ -288,6 +303,22 @@ export function teach(s: GameState, sign: 1 | -1, rng: Rng, log: (m: string) => 
   // ถ้าสิ่งที่มันเพิ่งทำเกี่ยวกับหมู่บ้านใดหมู่บ้านหนึ่ง มันจะจำหมู่บ้านนั้นไปด้วย
   // ไม่ใช่จำแค่พิกัด — ชมตอนช่วยหมู่บ้าน ก. แล้วมันจะลำเอียงไปช่วย ก. อีก
   if (c.lastVillage >= 0) rememberVillage(c, c.lastVillage, sign);
+  // ท่าหลายขั้น — "ทำ ก. แล้วต่อด้วย ข." เป็นของที่ B&W โชว์บ่อยที่สุด
+  // (ปลูกป่าแล้วรดน้ำ · รับลูกไฟแล้วขว้างกลับ) และเป็นสิ่งที่แยกการฝึกจริงออกจากการกดปุ่ม
+  // วิธีสอนคือชมสองครั้งติดที่คู่เดิม — ครั้งเดียวยังไม่พอ เพราะบังเอิญได้
+  //
+  // ไม่บังคับว่าต้องชมติดกัน — คนสอนจริงก็ชมอย่างอื่นสลับไปด้วย
+  // ตอนแรกบังคับให้ติดกัน ผลคือ `npm run sim` สอนไม่สำเร็จเลยสักท่าใน 8 โลก
+  // เพราะสัตว์ทำอย่างอื่นคั่นตลอด ซึ่งเป็นเรื่องปกติ ไม่ใช่ความผิดของผู้สอน
+  if (sign > 0 && c.pairFrom && c.pairFrom !== k && !c.chain[c.pairFrom]) {
+    const key = `${c.pairFrom}>${k}`;
+    c.pairs[key] = (c.pairs[key] ?? 0) + 1;
+    if (c.pairs[key] >= P.chainPraises) {
+      c.chain[c.pairFrom] = k;
+      log(`มันเรียนแล้วว่าหลัง${ACTION_NAME[c.pairFrom]}ให้ต่อด้วย${ACTION_NAME[k]}`);
+    }
+  }
+
   c.bond = clamp(c.bond + (sign > 0 ? P.bondPerPraise : P.bondPerScold), 0, 1);
   if (sign > 0) {
     c.curious = clamp(c.curious + P.curiousPerPraise, 0, 1);
@@ -381,6 +412,30 @@ export function smack(s: GameState, rng: Rng, log: (m: string) => void): boolean
   burst(s, c.x, c.y, "#9a3030", rng);
   log("ท่านตีมันทั้งที่มันไม่ได้ทำอะไร");
   return true;
+}
+
+/** สัตว์ดูชาวบ้านทำงานแล้วเลียนแบบ
+ *
+ *  เห็นคนสวดมนต์ก็อยากสวดตาม เห็นคนทำนาทำไม้ก็อยากช่วย
+ *  เป็นการเรียนรู้ที่ช้ามาก (หารด้วย `folkLearnDiv`) เพราะมันเป็นแค่การซึมซับ
+ *  ไม่ใช่การสอน — แต่มันทำให้ "หมู่บ้านที่ดูแลดี" ส่งผลต่อสัตว์ด้วย ไม่ใช่แค่ต่อศรัทธา */
+function watchFolk(s: GameState, c: Creature): void {
+  const I = balance.imitate;
+  if (s.tick % I.folkEveryTicks !== 0) return;
+  const v = nearestVillage(s, c.x, c.y);
+  if (!v || Math.hypot(v.x - c.x, v.y - c.y) > I.folkRadius) return;
+  // กลัวอยู่ก็ไม่ได้มองใคร — ความกลัวขวางการเรียนรู้ทุกทาง ไม่ใช่แค่ทางที่พระเจ้าสอน
+  const lr = (learnRate(c) / (C.learnBase + C.learnPerIntel * c.genes.intel)) * I.folkRate;
+  let pray = 0, work = 0;
+  for (const f of v.folk) {
+    if (f.job === "pray") pray++;
+    else if (f.job === "farm" || f.job === "wood" || f.job === "build") work++;
+  }
+  if (!pray && !work) return;
+  const total = pray + work;
+  const nudge = (k: keyof Weights, amt: number) => { c.w[k] = clamp(c.w[k] + amt, 0.05, 3); };
+  nudge("worship", (pray / total) * lr);
+  nudge("help", (work / total) * lr);
 }
 
 /** สัตว์ที่อยู่ใกล้พอจะเห็นว่าท่านเพิ่งทำอะไร แล้วเลียนแบบ
@@ -483,6 +538,11 @@ export function stepCreature(s: GameState, rng: Rng, log: (m: string) => void): 
   c.curious *= P.curiousDecayPerTick;
   if (s.attention > 0) s.attention--;
   decayMemory(c);
+
+  // มันดูคนทำงานอยู่ตรงหน้าแล้วเลียนแบบ — ใน B&W สัตว์เรียนจากการดูทั้งพระเจ้า
+  // *และชาวบ้าน* ของเดิมที่นี่เรียนจากคาถาของเราได้อย่างเดียว ซึ่งแปลว่าตลอดเวลาที่เหลือ
+  // มันอยู่ท่ามกลางคนที่กำลังทำอะไรอยู่เต็มไปหมด โดยไม่ได้อะไรจากตรงนั้นเลย
+  watchFolk(s, c);
 
   const t = tileAt(s.tiles, Math.round(c.x), Math.round(c.y));
   let drain = C.drainBase * (0.55 + g.meta) * (0.65 + bodySize(c) * 0.9);
