@@ -3,7 +3,8 @@ import { FixedLoop } from "./core/loop";
 import { createGame, stepTick, stepEffects, castSpell, teach, command,
          snapshot, restore, saveLooksValid, loyalPop, totalPop,
          SPELLS, type Game, type CommandId } from "./sim/index";
-import { draw, TerrainCache } from "./render/draw";
+import { draw, Terrain } from "./render/draw";
+import { Minimap } from "./ui/minimap";
 import { Camera } from "./render/camera";
 import { Hud } from "./ui/hud";
 import { clearSlot, readSlot, slotMeta, writeSlot, SLOTS, type SlotId } from "./core/storage";
@@ -22,7 +23,10 @@ let selected: { x: number; y: number } | null = null;
 let showMemory = false;
 
 const cam = new Camera();
-const terrain = new TerrainCache();
+const terrain = new Terrain();
+const minimap = new Minimap(document.getElementById("minimap")!, cam, (x, y) => {
+  cam.cx = x; cam.cy = y; cam.clampCenter();
+});
 const hud = new Hud(balance.era.names, (id) => {
   armedCmd = null; hud.setCommand(null);
   armed = armed === id ? null : id;
@@ -113,7 +117,20 @@ cv.addEventListener("wheel", (e) => {
   cam.zoomAt(e.clientX - r.left, e.clientY - r.top, e.deltaY < 0 ? 1.12 : 1 / 1.12);
 }, { passive: false });
 
+let lastTapAt = 0, lastTapX = 0, lastTapY = 0;
+
 function onTap(sx: number, sy: number) {
+  const now = performance.now();
+  if (now - lastTapAt < 320 && Math.hypot(sx - lastTapX, sy - lastTapY) < 28 && !armed && !armedCmd) {
+    lastTapAt = 0;
+    cam.zoomAt(sx, sy, cam.scale > cam.minScale * 2.2 ? 1 / 2.2 : 2.2);
+    return;
+  }
+  lastTapAt = now; lastTapX = sx; lastTapY = sy;
+  tapAction(sx, sy);
+}
+
+function tapAction(sx: number, sy: number) {
   const w = cam.toWorld(sx, sy);
   const x = Math.floor(w.x), y = Math.floor(w.y);
   if (x < 0 || y < 0 || x >= W || y >= H) return;
@@ -266,17 +283,35 @@ const loop = new FixedLoop(
       selected, showMemory,
     });
     hud.update(s);
+    minimap.draw(s);
     if (selected && !document.getElementById("inspect")!.classList.contains("hidden")
         && s.tick % 8 === 0) hud.drawInspect(s, selected.x, selected.y);
   },
 );
+
+/** ครั้งแรกที่เปิดเกม บอกสามอย่างที่ผู้เล่นต้องรู้ แล้วไม่กวนอีก */
+function showFirstHint() {
+  const el = document.getElementById("firsthint")!;
+  if (localStorage.getItem("genesis:seenHint") === "1") return;
+  el.classList.remove("hidden");
+  el.innerHTML = `<b>ยินดีต้อนรับสู่โลกของท่าน</b><br>
+    ลากเพื่อเลื่อนแผนที่ · หนีบสองนิ้วหรือแตะสองครั้งเพื่อซูม<br>
+    แตะพื้นดินเพื่อดูว่าดินตรงนั้นเป็นอย่างไร<br>
+    เลือกคาถาแล้วแตะแผนที่เพื่อร่าย · ชม ✦ หรือตี ✕ สัตว์ได้ทันทีหลังมันทำอะไรสักอย่าง
+    <button id="hintOk">เข้าใจแล้ว</button>`;
+  document.getElementById("hintOk")!.onclick = () => {
+    el.classList.add("hidden");
+    try { localStorage.setItem("genesis:seenHint", "1"); } catch { /* ไม่เป็นไร */ }
+  };
+}
 
 function newGame() {
   game = createGame(Date.now() & 0xffffff);
   armed = null; armedCmd = null; selected = null; lastEra = -1; lastAutosave = 0;
   resize();
   cam.fitAll();
-  hud.say("โลกใหม่ถือกำเนิด — แตะแผ่นดินเพื่อดูว่าดินเป็นอย่างไร");
+  hud.say("โลกใหม่ถือกำเนิด");
+  showFirstHint();
 }
 
 // เปิดเกมมาแล้วมีโลกค้างอยู่ ก็เล่นต่อจากเดิม ไม่ใช่เริ่มใหม่ทุกครั้ง
