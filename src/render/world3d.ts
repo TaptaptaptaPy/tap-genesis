@@ -15,21 +15,26 @@ export class World3D {
   // มุมกล้องแบบโคจร
   azimuth = Math.PI * 0.25;
   elevation = 0.92;
-  distance = 34;
-  private targetDistance = 34;
+  distance = 26;
+  private targetDistance = 26;
   /** จุดที่กล้องหมุนรอบ — เลื่อนได้แล้ว เพื่อให้ "ลงไปยืนตรงนั้น" ได้จริง ไม่ใช่ดูเกาะจากข้างนอกอย่างเดียว */
   private targetCenter = new THREE.Vector3(W / 2, 0, H / 2);
   /** 0 = กลางดึก, 1 = เที่ยงวัน — อ่านได้จากข้างนอกเพื่อให้กองไฟในหมู่บ้านติดตอนมืด */
   daylight = 1;
 
-  private readonly skyDay = new THREE.Color(0x122c3a);
-  private readonly skyNight = new THREE.Color(0x0a1526);
+  // ท้องฟ้ากลางวันเคยเป็น 0x122c3a ซึ่งเข้มพอๆ กับกลางคืน เกมเลยดูเป็นเวลาเย็นตลอดทั้งเกม
+  // ตอนนี้แยกเป็นสองสี: สีบนหัวกับสีตรงขอบฟ้า แล้วไล่เฉดระหว่างกันด้วยโดมท้องฟ้า
+  private readonly zenithDay = new THREE.Color(0x2f6f9e);
+  private readonly zenithNight = new THREE.Color(0x0c1424);
+  private readonly horizonDay = new THREE.Color(0x9cc6dc);
+  private readonly horizonNight = new THREE.Color(0x1d2b44);
   private readonly hemiDay = new THREE.Color(0x9ec4dc);
   private readonly hemiNight = new THREE.Color(0x46618f);
   private readonly moon = new THREE.Color(0x9fb8e8);
   private readonly sunNoon = new THREE.Color(0xfff2d8);
   private readonly sunLow = new THREE.Color(0xffb066);
   private hemi!: THREE.HemisphereLight;
+  private skyMat!: THREE.ShaderMaterial;
 
   constructor(private canvas: HTMLCanvasElement) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
@@ -41,8 +46,11 @@ export class World3D {
     this.renderer.toneMappingExposure = 1.15;
 
     this.camera = new THREE.PerspectiveCamera(42, 1, 0.5, 400);
-    this.scene.fog = new THREE.Fog(0x0a1a26, 40, 110);
-    this.scene.background = new THREE.Color(0x0a1a26);
+    // หมอกต้องเริ่ม "หลังเกาะ" ไม่ใช่กลางเกาะ เกาะกว้าง 44 ยาว 32 กล้องปกติอยู่ที่ 26
+    // ของเดิมเริ่มที่ 40 จบ 110 ขอบเกาะฝั่งไกลเลยจางหายไปในสีท้องฟ้าตลอดเวลา
+    this.scene.fog = new THREE.Fog(0x0a1a26, 70, 175);
+    this.scene.background = null;
+    this.addSkyDome();
 
     this.hemi = new THREE.HemisphereLight(0x9ec4dc, 0x2a3626, 0.75);
     this.scene.add(this.hemi);
@@ -61,6 +69,46 @@ export class World3D {
     this.scene.add(this.sun, this.sun.target);
 
     this.resize();
+  }
+
+  /** โดมท้องฟ้า: ทรงกลมใบใหญ่ที่มองจากด้านใน ไล่สีจากขอบฟ้าขึ้นไปบนหัว
+   *  พื้นหลังสีเดียวแบนๆ คือสิ่งที่ทำให้ฉากดูเหมือนภาพ 3 มิติลอยอยู่ในกล่อง ไม่ใช่เกาะกลางทะเล
+   *  ใช้ ShaderMaterial ดิบ ไม่รับหมอกและไม่รับ tone mapping สีที่ใส่จึงเป็นสีที่เห็นจริงๆ */
+  private addSkyDome() {
+    this.skyMat = new THREE.ShaderMaterial({
+      side: THREE.BackSide, depthWrite: false, fog: false, toneMapped: false,
+      uniforms: {
+        zenith: { value: this.zenithDay.clone() },
+        horizon: { value: this.horizonDay.clone() },
+        glow: { value: new THREE.Color(0xffd9a0) },
+        sunDir: { value: new THREE.Vector3(0, 1, 0) },
+        glowStrength: { value: 0.5 },
+      },
+      vertexShader: `varying vec3 vDir;
+        void main() {
+          vDir = normalize(position);
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }`,
+      fragmentShader: `uniform vec3 zenith; uniform vec3 horizon; uniform vec3 glow;
+        uniform vec3 sunDir; uniform float glowStrength;
+        varying vec3 vDir;
+        void main() {
+          vec3 d = normalize(vDir);
+          float h = clamp(d.y * 0.5 + 0.5, 0.0, 1.0);
+          vec3 c = mix(horizon, zenith, pow(h, 0.65));
+          // แสงฟุ้งรอบดวงอาทิตย์ — ทำให้รู้ว่าตอนนี้แดดมาจากทางไหนโดยไม่ต้องวาดดวงอาทิตย์
+          float s = max(0.0, dot(d, normalize(sunDir)));
+          c += glow * pow(s, 8.0) * glowStrength;
+          gl_FragColor = vec4(c, 1.0);
+          // THREE.Color แปลงเลขฐานสิบหกจาก sRGB เป็น linear ให้ตั้งแต่ตอนสร้าง
+          // ถ้าเขียนค่านั้นลงบัฟเฟอร์ตรงๆ ท้องฟ้าจะมืดกว่าที่ตั้งไว้มาก (เคยเป็นแบบนั้นมาแล้ว)
+          #include <colorspace_fragment>
+        }`,
+    });
+    const dome = new THREE.Mesh(new THREE.SphereGeometry(260, 24, 16), this.skyMat);
+    dome.renderOrder = -1;
+    dome.frustumCulled = false;
+    this.scene.add(dome);
   }
 
   resize() {
@@ -89,7 +137,7 @@ export class World3D {
   /** ถอยกลับไปมองทั้งเกาะ */
   resetView() {
     this.targetCenter.set(W / 2, 0, H / 2);
-    this.targetDistance = 34;
+    this.targetDistance = 26;
     this.elevation = 0.92;
   }
 
@@ -109,17 +157,27 @@ export class World3D {
     const night = up < 0;
     const h = Math.abs(up);
     this.sun.position.set(Math.cos(night ? t + Math.PI : t) * 30, 5 + h * 38, -12);
-    this.sun.intensity = night ? 0.3 + 0.14 * h : 0.2 + 1.4 * d;
+    // เคยเป็น 0.2 + 1.4*d ซึ่งพอรวมกับ hemi แล้วความสว่างรวมทะลุ 1 ตอนเที่ยง
+    // ACES ไม่ได้ทำให้ภาพพัง มันแค่ม้วนส่วนที่เกินไปเป็นขาว ทุ่งหญ้าเลยกลายเป็นทุ่งหิมะ
+    // (CLAUDE.md จดไว้ว่าปรับ sun เป็น 1.45 แล้วหาย — แต่บรรทัดนี้เขียนทับค่านั้นทุกเฟรม)
+    this.sun.intensity = night ? 0.26 + 0.12 * h : 0.18 + 0.92 * d;
     if (night) this.sun.color.copy(this.moon);
     else this.sun.color.copy(this.sunLow).lerp(this.sunNoon, d);
 
-    this.hemi.intensity = 0.44 + 0.42 * d;
+    this.hemi.intensity = 0.34 + 0.28 * d;
     this.hemi.color.copy(this.hemiNight).lerp(this.hemiDay, d);
 
-    const sky = this.skyNight.clone().lerp(this.skyDay, d);
-    (this.scene.background as THREE.Color).copy(sky);
-    (this.scene.fog as THREE.Fog).color.copy(sky);
-    this.renderer.toneMappingExposure = 1.0 + 0.2 * d;
+    const horizon = this.horizonNight.clone().lerp(this.horizonDay, d);
+    (this.skyMat.uniforms.zenith.value as THREE.Color)
+      .copy(this.zenithNight).lerp(this.zenithDay, d);
+    (this.skyMat.uniforms.horizon.value as THREE.Color).copy(horizon);
+    (this.skyMat.uniforms.glow.value as THREE.Color).copy(this.sun.color);
+    (this.skyMat.uniforms.sunDir.value as THREE.Vector3)
+      .copy(this.sun.position).sub(this.center).normalize();
+    this.skyMat.uniforms.glowStrength.value = night ? 0.12 : 0.22 + 0.4 * (1 - d);
+    // หมอกต้องเป็นสีขอบฟ้า ไม่ใช่สีบนหัว ไม่งั้นเกาะฝั่งไกลจะจางไปคนละสีกับฟ้าที่อยู่หลังมัน
+    (this.scene.fog as THREE.Fog).color.copy(horizon);
+    this.renderer.toneMappingExposure = 0.96 + 0.14 * d;
   }
   orbitBy(dx: number, dy: number) {
     this.azimuth -= dx * 0.006;

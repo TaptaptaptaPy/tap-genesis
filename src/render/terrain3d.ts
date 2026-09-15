@@ -9,8 +9,11 @@ const { W, H } = balance.world;
 
 type RGB = [number, number, number];
 const SKIN: Record<BiomeId, { lo: RGB; hi: RGB }> = {
-  OCEAN:   { lo: [0.02, 0.05, 0.09], hi: [0.04, 0.09, 0.14] },
-  SHALLOW: { lo: [0.06, 0.15, 0.22], hi: [0.13, 0.30, 0.40] },
+  // ช่องน้ำในตัวเกาะถูกระนาบผิวน้ำทับอยู่ 88% ที่เหลืออีก 12% คือสิ่งที่เห็น
+  // ถ้าสีไม่ใกล้สีระนาบ (0x164b63 = linear ราว 0.008/0.068/0.123) จะเห็น "ขอบโลก"
+  // เป็นสี่เหลี่ยมจัตุรัสรอบเกาะ เพราะนอกตารางพื้นดินไม่มีช่องน้ำให้ทับ
+  OCEAN:   { lo: [0.006, 0.052, 0.098], hi: [0.011, 0.082, 0.147] },
+  SHALLOW: { lo: [0.03, 0.14, 0.21], hi: [0.09, 0.30, 0.40] },
   SAND:    { lo: [0.66, 0.59, 0.42], hi: [0.86, 0.80, 0.63] },
   DESERT:  { lo: [0.58, 0.49, 0.30], hi: [0.80, 0.71, 0.49] },
   GRASS:   { lo: [0.25, 0.37, 0.16], hi: [0.49, 0.65, 0.31] },
@@ -78,12 +81,16 @@ export class Terrain3D {
     this.ground.castShadow = true;
     this.group.add(this.ground);
 
-    // ผิวน้ำ: ระนาบใหญ่กว่าเกาะ โปร่งแสง ขยับขึ้นลงเบาๆ
-    const wgeo = new THREE.PlaneGeometry(W * 9, H * 9, 1, 1);
+    // ผิวน้ำ: ระนาบเดียวคลุมถึงขอบฟ้า ขยับขึ้นลงเบาๆ
+    // ต้องใหญ่กว่ารัศมีโดมท้องฟ้า (260) ไม่งั้นจะเห็นขอบทะเลเป็นเส้นตรง
+    //
+    // และต้อง "ทึบ" ด้วย ตอนเป็นโปร่งแสง 88% อีก 12% ที่เหลือคือช่องน้ำในตารางพื้นดิน
+    // ซึ่งมีแค่ในกรอบ 24×24 ของโลกเท่านั้น นอกกรอบไม่มี ทะเลเลยมีสองเฉด
+    // แบ่งกันด้วยเส้นตรงเป็นรูปสี่เหลี่ยมรอบเกาะ = "ขอบโลก" ที่ไม่ควรมี
+    // (ลองดันขอบตารางออกไป 240 หน่วยแล้ว ผลคือสามเหลี่ยมยักษ์ลากสีกับ normal เพี้ยนทั้งผืน)
+    const wgeo = new THREE.PlaneGeometry(W * 22, H * 22, 1, 1);
     wgeo.rotateX(-Math.PI / 2);
-    const wmat = new THREE.MeshBasicMaterial({
-      color: 0x0b2436, transparent: true, opacity: 0.95, fog: true,
-    });
+    const wmat = new THREE.MeshBasicMaterial({ color: 0x164b63, fog: true });
     this.water = new THREE.Mesh(wgeo, wmat);
     this.water.position.set(W / 2, 0.02, H / 2);
     this.water.receiveShadow = false;
