@@ -29,7 +29,10 @@ export const CARRY_NAME: Record<CarryKind, string> = {
 export function whatIsAt(t: Tile | null): CarryKind | null {
   if (!t || isWater(t.biome)) return null;
   // คนมาก่อนของ ถ้ายืนบนหมู่บ้านก็ควรได้หยิบคน ไม่ใช่หยิบก้อนหินใต้บ้านเขา
-  if (t.village && t.village.pop >= P.folkMinPop) return "folk";
+  // ต้องเช็ก `folk.length` ด้วย ไม่ใช่เช็กแต่ `pop`! ชาวบ้านรายคนถูกสร้างตอน `stepFolk()`
+  // ตอน tick 0 ทุกหมู่บ้านจึงมี pop 10 แต่ folk 0 ฟังก์ชันนี้เคยบอกว่า "หยิบคนได้"
+  // แล้ว grabAt() ปฏิเสธว่า "ไม่มีใครอยู่ตรงนั้น" — UI กับการกระทำพูดคนละเรื่องกัน
+  if (t.village && t.village.pop >= P.folkMinPop && t.village.folk.length > 0) return "folk";
   if (t.biome === "FOREST" || t.biome === "LUSH") return "tree";
   if (t.biome === "HILL" || t.biome === "MOUNT" || t.biome === "ASH") return "rock";
   if (t.fert >= P.grabFertNeeded) return "food";
@@ -121,21 +124,30 @@ export function throwTo(s: GameState, tx: number, ty: number, log: (m: string) =
 
 /** เดินฟิสิกส์หนึ่ง tick — เรียกจาก stepTick() เท่านั้น */
 export function stepProjectiles(s: GameState, dt: number, rng: Rng, log: (m: string) => void): void {
-  for (let i = s.thrown.length - 1; i >= 0; i--) {
-    const p = s.thrown[i];
-    p.age += dt;
-    p.x += p.vx * dt;
-    p.y += p.vy * dt;
-    p.vz -= P.gravity * dt;
-    p.z += p.vz * dt;
+  // ต้องซอยก้าว! หนึ่งจังหวะเกมคือ 0.45 วินาที ของที่บินด้วยความเร็ว ~5 ช่อง/วินาที
+  // จะกระโดดทีละ 2 ช่องเต็ม แล้วมันจะ "ผ่าน" เป้าไปเลยหรือไม่ก็ทะลุเข้าไปในภูเขากลางทาง
+  // อาการที่เห็นคือขว้างหินใส่หมู่บ้านแล้วขึ้นว่า "ก้อนหินกระแทกพื้น" ทั้งที่เล็งตรงเป๊ะ
+  // (การนับใน `npm run sim` บอกได้แค่ว่า "ขว้างไปกี่ครั้ง" ไม่ได้บอกว่าโดนกี่ครั้ง)
+  const steps = Math.max(1, Math.ceil(dt / P.maxStep));
+  const h = dt / steps;
+  for (let n = 0; n < steps; n++) {
+    for (let i = s.thrown.length - 1; i >= 0; i--) {
+      const p = s.thrown[i];
+      p.age += h;
+      p.x += p.vx * h;
+      p.y += p.vy * h;
+      p.vz -= P.gravity * h;
+      p.z += p.vz * h;
 
-    const t = tileAt(s.tiles, Math.floor(p.x), Math.floor(p.y));
-    const groundZ = t ? t.h : -99;
-    const landed = p.z <= groundZ || p.age > P.maxFlight * 1.5;
-    if (!landed) continue;
+      const t = tileAt(s.tiles, Math.floor(p.x), Math.floor(p.y));
+      const groundZ = t ? t.h : -99;
+      const landed = p.z <= groundZ || p.age > P.maxFlight * 1.5;
+      if (!landed) continue;
 
-    s.thrown.splice(i, 1);
-    impact(s, p, t, rng, log);
+      s.thrown.splice(i, 1);
+      impact(s, p, t, rng, log);
+    }
+    if (s.thrown.length === 0) break;
   }
 }
 

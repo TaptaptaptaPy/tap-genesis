@@ -126,7 +126,11 @@ export class Terrain3D {
       this.refresh(s, s.terrainVersion !== this.version);
       this.version = s.terrainVersion;
     }
-    this.water.position.y = 0.02 + Math.sin(time * 0.0009) * 0.06;
+    // ต้องอยู่เหนือ 0 เสมอ! `worldY()` ตัดทุกช่องที่ต่ำกว่าระดับน้ำทะเลให้เป็น y = 0 พอดี
+    // ของเดิมแกว่ง 0.02 ± 0.06 คือลงไปถึง -0.04 ทุกครึ่งรอบ ระนาบน้ำเลยมุดใต้พื้นทะเลเป็นช่วงๆ
+    // ผลคือเห็นสีช่องน้ำในตาราง 24×24 โผล่มาเป็นสี่เหลี่ยมข้าวหลามตัดรอบเกาะแล้วหายไป
+    // (นี่คือ "ขอบโลก" ตัวจริง — ที่แก้ไปก่อนหน้าคือคนละสาเหตุแต่อาการเดียวกัน)
+    this.water.position.y = 0.12 + Math.sin(time * 0.0009) * 0.05;
   }
 
   private refresh(s: GameState, rebuildProps: boolean) {

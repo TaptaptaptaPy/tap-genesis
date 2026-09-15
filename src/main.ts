@@ -331,6 +331,19 @@ function toggleMenu(force?: boolean) {
 
 // ───────────────────────── ลูปหลัก ─────────────────────────
 
+/** โหมดทดสอบภาพ — `?seed=123&t=0.35` เปิดโลกเดิมทุกครั้งและหยุดเวลาไว้ที่จุดเดิม
+ *
+ *  ภาพหน้าจอเทียบกันได้ก็ต่อเมื่อสองรอบเห็นของเหมือนกันเป๊ะ แต่ปกติเกมนี้
+ *  สุ่ม seed จาก `Date.now()` และเดินเวลากลางวันกลางคืนตลอดเวลา สองอย่างนี้ทำให้เทียบไม่ได้เลย
+ *  พารามิเตอร์นี้จึงมีไว้ให้ Playwright ใช้ (ดู tests/visual.spec.ts) */
+const testParams = (() => {
+  const q = new URLSearchParams(location.search);
+  const seed = q.get("seed");
+  if (seed === null) return null;
+  const t = q.get("t");
+  return { seed: Number(seed) | 0, t: t === null ? 0.35 : Number(t) };
+})();
+
 let lastAutosave = 0;
 const loop = new FixedLoop(
   balance.time.tickSeconds,
@@ -347,7 +360,8 @@ const loop = new FixedLoop(
 
     world.shake = Math.max(world.shake, s.shake);
     // เวลาบนเกาะเดินตาม tick ไม่ใช่นาฬิกาจริง กด 2x/4x แล้วพระอาทิตย์ต้องเคลื่อนเร็วขึ้นด้วย
-    world.setTimeOfDay(((s.tick % balance.time.ticksPerDay) / balance.time.ticksPerDay + 0.18) % 1);
+    world.setTimeOfDay(testParams?.t ??
+      ((s.tick % balance.time.ticksPerDay) / balance.time.ticksPerDay + 0.18) % 1);
     terrain.update(s, now);
     villages.update(s, now, world.daylight);
     villagers.update(s, dt);
@@ -442,8 +456,15 @@ function newGame() {
   showFirstHint();
 }
 
-const auto = readSlot("auto");
-if (auto && saveLooksValid(auto.state, W * H)) {
+const auto = testParams ? null : readSlot("auto");
+if (testParams) {
+  game = createGame(testParams.seed);
+  rebuildTerrain();
+  world.resize();
+  hud.buildSpells(game.state.align, null);
+  world.setTimeOfDay(testParams.t);
+  loop.paused = true;
+} else if (auto && saveLooksValid(auto.state, W * H)) {
   game = restore(auto.state);
   rebuildTerrain();
   world.resize();
