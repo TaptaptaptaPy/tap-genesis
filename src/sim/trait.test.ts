@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createGame, stepTick } from "./index";
-import { TRAITS, TRAIT_IDS, traitOf, addAwe } from "./village";
+import { TRAITS, TRAIT_IDS, traitOf, addAwe, villageFootprint, workRadiusOf } from "./village";
 import balance from "../../data/balance.json";
 
 const world = (ticks = 0) => {
@@ -66,5 +66,34 @@ describe("บุคลิกของหมู่บ้าน", () => {
   it("traitOf คืนค่าเสมอ ไม่ว่าหมู่บ้านนั้นมาจากเซฟรุ่นไหน", () => {
     const v = { ...world(10).state.villages[0], trait: "ไม่รู้จัก" as never };
     expect(traitOf(v).name).toBeTruthy();
+  });
+});
+
+/** ข้อสังเกตที่จดไว้ใน CLAUDE.md ว่า "ยังไม่ได้แก้" มาตั้งแต่ต้น:
+ *  workRadius มีแค่ 2 แต่กลุ่มกระท่อมกินรัศมีถึง ~1.92 ตอนหมู่บ้านใหญ่
+ *  แปลว่าหมู่บ้านยืนทับไร่ของตัวเองเกือบหมดโดยที่ไม่มีอะไรบอก */
+describe("หมู่บ้านต้องไม่ยืนทับไร่ของตัวเอง", () => {
+  it("รัศมีทำกินกว้างกว่ากลุ่มกระท่อมเสมอ ไม่ว่าหมู่บ้านจะใหญ่แค่ไหน", () => {
+    const g = world(60);
+    const v = g.state.villages[0];
+    for (const pop of [5, 20, 60, 120, 400]) {
+      const probe = { ...v, pop };
+      expect(workRadiusOf(probe)).toBeGreaterThan(villageFootprint(probe) + 0.8);
+    }
+  });
+
+  it("หมู่บ้านใหญ่ทั้งกินที่ตัวเองมากขึ้นและออกไปทำกินไกลขึ้น", () => {
+    const g = world(60);
+    const v = g.state.villages[0];
+    const small = { ...v, pop: 5 }, big = { ...v, pop: 200 };
+    expect(villageFootprint(big)).toBeGreaterThan(villageFootprint(small));
+    expect(workRadiusOf(big)).toBeGreaterThan(workRadiusOf(small));
+  });
+
+  it("ชั้นภาพกับชั้นตรรกะใช้ตัวเลขชุดเดียวกัน", async () => {
+    const layout = await import("../render/layout");
+    const g = world(20);
+    const v = g.state.villages[0];
+    expect(layout.villageFootprint(v)).toBe(villageFootprint(v));
   });
 });

@@ -28,6 +28,21 @@ export const TRAITS = balance.village.traits as Record<VillageTrait, {
 export const TRAIT_IDS = Object.keys(TRAITS) as VillageTrait[];
 export const traitOf = (v: Village) => TRAITS[v.trait] ?? TRAITS.hardy;
 
+/** ขนาดของกลุ่มกระท่อม — ที่เดียวที่ตัดสินว่าหมู่บ้านกินพื้นที่แค่ไหน
+ *  อยู่ในชั้นตรรกะเพราะ *ตรรกะ* ต้องรู้ด้วยว่าตรงกลางหมู่บ้านไม่ใช่ไร่นา
+ *  ชั้นภาพ (`render/layout.ts`) หยิบไปใช้ต่อ ไม่คิดเลขเอง */
+export const villageGrow = (v: Village) =>
+  balance.village.growBase + Math.min(balance.village.growMax, v.pop / balance.village.growPerPop);
+export const villageFootprint = (v: Village) =>
+  (balance.village.hutSpread + balance.village.hutRadius) * villageGrow(v);
+
+/** รัศมีที่หมู่บ้านนี้ออกไปทำกิน — โตตามประชากร หมู่บ้านใหญ่ต้องเดินไกลกว่า
+ *  ของเดิมคงที่ที่ 2 ขณะที่กระท่อมกินรัศมีถึง 1.92 ตอนหมู่บ้านใหญ่
+ *  ซึ่งแปลว่าหมู่บ้านยืนทับไร่ของตัวเองเกือบหมด */
+export const workRadiusOf = (v: Village) =>
+  Math.min(balance.village.workRadiusMax,
+           balance.village.workRadius + v.pop * balance.village.workRadiusPerPop);
+
 export function foundVillage(s: GameState, x: number, y: number, rng: Rng): Village | null {
   const t = tileAt(s.tiles, x, y);
   if (!t || isWater(t.biome) || t.village) return null;
@@ -99,7 +114,7 @@ export const priestsOf = (v: Village) => v.folk.reduce((n, f) => n + (f.priest ?
 
 export function stepVillages(s: GameState, rng: Rng, log: (m: string) => void): void {
   const V = balance.village, N = balance.needs;
-  const cap = V.popCap, R = V.workRadius;
+  const cap = V.popCap;
 
   for (let i = s.villages.length - 1; i >= 0; i--) {
     const v = s.villages[i];
@@ -109,9 +124,16 @@ export function stepVillages(s: GameState, rng: Rng, log: (m: string) => void): 
     // เก็บเกี่ยวแบบสัดส่วน ดินเข้าสู่สมดุล = แต่ละหมู่บ้านมีเพดานประชากรตามผืนดินรอบตัว
     let yieldSum = 0, woodSum = 0;
     const inten = clamp(v.pop / V.intensityDivisor, 0.25, 1.4);
+    // วนเป็นสี่เหลี่ยมแต่คิดเป็นวงกลม — ชาวบ้านเดินเป็นรัศมี ไม่ได้เดินเป็นตาราง
+    const Rf = workRadiusOf(v), R = Math.ceil(Rf);
+    // ช่องที่กระท่อมยืนทับอยู่ไม่ใช่ไร่นา — หมู่บ้านยิ่งโตยิ่งกินที่ทำกินของตัวเอง
+    // และรัศมีทำกินก็ขยายออกไปด้วย เพราะคนเยอะขึ้นก็ต้องเดินไกลขึ้น
+    const foot = villageFootprint(v);
     for (let dy = -R; dy <= R; dy++) for (let dx = -R; dx <= R; dx++) {
       const t = tileAt(s.tiles, v.x + dx, v.y + dy);
       if (!t) continue;
+      const d = Math.hypot(dx, dy);
+      if (d > Rf || d < foot) continue;
       const take = t.fert * V.harvestRate * inten;
       yieldSum += take * (isWater(t.biome) ? 0.5 : 1);
       t.fert = Math.max(0, t.fert - take * V.depletionFactor);
