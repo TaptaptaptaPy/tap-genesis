@@ -2,7 +2,7 @@ import "./style.css";
 import { FixedLoop } from "./core/loop";
 import { createGame, stepTick, stepEffects, castSpell, teach, command,
          snapshot, restore, saveLooksValid, totalPop, computeReign, placeCreature,
-         grabAt, throwTo, dropCarry, whatIsAt, CARRY_NAME, tileAt,
+         grabAt, throwTo, dropCarry, whatIsAt, CARRY_NAME, tileAt, advise, adviceEvery,
          SPELLS, type Game, type CommandId } from "./sim/index";
 import { World3D } from "./render/world3d";
 import { Terrain3D, groundY } from "./render/terrain3d";
@@ -355,6 +355,7 @@ const loop = new FixedLoop(
     hand.update(s, hover ?? selected, dt, now, lifting || !!s.carrying);
     thrown.update(s, now);
     if (grabbing || s.carrying) renderGrabBar();
+    renderAdvisors();
     fx.update(s, now);
 
     world.update(dt, (x, z) => groundY(s, x, z));
@@ -366,6 +367,26 @@ const loop = new FixedLoop(
         && s.tick % 8 === 0) hud.drawInspect(s, selected.x, selected.y);
   },
 );
+
+// ───────────────────────── ที่ปรึกษาสองฝ่าย ─────────────────────────
+
+/** เถียงกันเรื่องเดียวกันจากคนละมุม — และทำหน้าที่เป็นระบบคำใบ้ไปในตัว */
+let adviceAt = -999;
+function renderAdvisors() {
+  const s = game.state;
+  if (s.tick - adviceAt < adviceEvery) return;
+  adviceAt = s.tick;
+  const pair = advise(s);
+  if (!pair) return;
+  for (const a of pair) {
+    const el = document.querySelector<HTMLElement>(`.adv.${a.voice === "kind" ? "kind" : "cruel"}`);
+    if (!el) continue;
+    el.textContent = a.text;
+    el.classList.remove("show");
+    void el.offsetWidth;        // บังคับให้ animation เริ่มใหม่
+    el.classList.add("show");
+  }
+}
 
 // ───────────────────────── ฉากจบ ─────────────────────────
 

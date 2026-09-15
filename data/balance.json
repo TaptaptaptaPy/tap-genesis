@@ -12,7 +12,9 @@
     "tickSeconds": 0.45,
     "ticksPerYear": 160,
     "_day": "หนึ่งวันบนเกาะกี่ tick — 200 tick = 90 วินาทีจริงตอนความเร็ว 1x",
-    "ticksPerDay": 200
+    "ticksPerDay": 200,
+    "_advice": "ที่ปรึกษาพูดทุกกี่ tick — ถี่เกินกลายเป็นเสียงรบกวน",
+    "adviceEveryTicks": 90
   },
   "village": {
     "popCap": 80,
@@ -144,6 +146,12 @@
     "believers": 300,
     "minYears": 6
   },
+  "town": {
+    "_comment": "หมู่บ้านโตขึ้นแล้วเปลี่ยนรูปทรง ไม่ใช่แค่เพิ่มจำนวนกระท่อม",
+    "hallAtPop": 26,
+    "totemAtBelief": 0.62,
+    "wallAtPop": 60
+  },
   "influence": {
     "_comment": "ร่ายคาถาได้เฉพาะในเขตที่มีคนศรัทธาท่านอยู่ — ยิ่งดูแลคนได้ดี เขตยิ่งกว้าง",
     "base": 3.2,
@@ -172,7 +180,13 @@
     "foodNeed": 0.22,
     "foodAwe": 0.18,
     "foodAlign": 0.008,
-    "splashRadius": 1.1
+    "splashRadius": 1.1,
+    "_folk": "หยิบคนได้ด้วย ย้ายคนไปหมู่บ้านอื่นได้ และทิ้งลงน้ำก็ได้ ซึ่งมีราคาของมัน",
+    "folkMinPop": 6,
+    "folkDrownAlign": -0.09,
+    "folkDrownAwe": 0.4,
+    "folkLandRadius": 2.2,
+    "folkMoveAlign": 0.004
   },
   "start": {
     "faith": 40,

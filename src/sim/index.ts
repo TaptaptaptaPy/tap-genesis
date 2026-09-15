@@ -18,6 +18,8 @@ export { totalPop, nearestVillage, neediestVillage, maxVillages, faithCap,
          influenceOf, inInfluence, NEED_NAME } from "./village";
 export { computeReign, reachedGoal, goalBelievers, goalProgress } from "./reign";
 export { grabAt, throwTo, dropCarry, whatIsAt, CARRY_NAME } from "./physics";
+export { advise, adviceEvery, VOICE_NAME } from "./advisor";
+export type { Advice, Voice } from "./advisor";
 export type { Reign } from "./reign";
 export { tileAt, idx } from "./world";
 export { disasterLabel } from "./disaster";

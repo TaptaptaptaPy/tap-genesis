@@ -47,13 +47,39 @@ interface GodStats { cast: Record<string, number>; spent: number; denied: number
 const newGodStats = (): GodStats =>
   ({ cast: {}, spent: 0, denied: 0, praise: 0, scold: 0, grabbed: 0, threw: {} });
 
+/** ผืนน้ำใกล้ที่สุดจากจุดหนึ่ง — เทพพิโรธใช้หาที่ทิ้งคน */
+function findWater(s: GameState, cx: number, cy: number) {
+  let best = null, bd = Infinity;
+  for (const t of s.tiles) {
+    if (!isWater(t.biome)) continue;
+    const d = Math.hypot(t.x - cx, t.y - cy);
+    if (d < bd) { bd = d; best = t; }
+  }
+  return best ? { x: best.x, y: best.y } : null;
+}
+
 /** ขว้างของแต่ละชนิดไปที่ไหนถึงจะสมเหตุสมผล
  *  ต้นไม้ขว้างใส่หมู่บ้านไม่ได้เรื่อง ต้องขว้างลงที่โล่งใกล้หมู่บ้านถึงจะมีประโยชน์ */
 function aimFor(s: GameState, kind: CarryKind, persona: Persona) {
   if (kind === "tree") return findBare(s);
+  if (kind === "folk") {
+    // เทพเมตตาย้ายคนจากหมู่บ้านที่แน่นไปหมู่บ้านที่ร่อยหรอ เทพพิโรธทิ้งลงทะเล
+    if (persona === "wrath") {
+      const big = biggest(s);
+      return big ? findWater(s, big.x, big.y) : null;
+    }
+    const small = smallest(s);
+    return small ? { x: small.x, y: small.y } : null;
+  }
   const v = persona === "kind" ? (neediestVillage(s) ?? biggest(s)) : biggest(s);
   return v ? { x: v.x, y: v.y } : null;
 }
+
+const smallest = (s: GameState): Village | null => {
+  let out: Village | null = null;
+  for (const v of s.villages) if (!out || v.pop < out.pop) out = v;
+  return out;
+};
 
 /** ที่โล่งในเขตอิทธิพลที่ควรมีป่า — ดินจางและยังไม่ใช่ป่า */
 function findBare(s: GameState) {
@@ -182,6 +208,17 @@ function divine(g: Game, persona: Persona, st: GodStats, log: (m: string) => voi
       const t = findGrab(s, "tree", bare.x, bare.y, 6);
       if (t && grabAt(s, t.x, t.y, log)) { st.grabbed++; return; }
     }
+    // หมู่บ้านหนึ่งแน่นอีกหมู่บ้านหนึ่งร่อยหรอ ก็ยกคนไปเฉลี่ยกันได้
+    const big = biggest(s), small = smallest(s);
+    if (big && small && big !== small && big.pop > small.pop * 2.5 && big.pop > 14) {
+      if (grabAt(s, big.x, big.y, log)) { st.grabbed++; return; }
+    }
+  }
+
+  // เทพพิโรธก็หยิบคนได้ และเขาไม่ได้หยิบไปวางที่ปลอดภัย
+  if (persona === "wrath" && s.tick % (GOD.castEveryTicks * 5) === 0) {
+    const big = biggest(s);
+    if (big && big.pop > 10 && grabAt(s, big.x, big.y, log)) { st.grabbed++; return; }
   }
 
   const plan = persona === "kind" ? kindPlan(s) : wrathPlan(s);

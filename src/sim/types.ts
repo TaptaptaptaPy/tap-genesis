@@ -90,7 +90,7 @@ export interface Disaster {
   name: string;
 }
 
-export type CarryKind = "rock" | "tree" | "food";
+export type CarryKind = "rock" | "tree" | "food" | "folk";
 export interface Projectile {
   kind: CarryKind;
   x: number; y: number; z: number;

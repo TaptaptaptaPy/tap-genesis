@@ -173,3 +173,16 @@ canvas:active{cursor:grabbing}
   backdrop-filter:blur(8px)}
 #bGrab[data-on="1"]{border-color:#f0d38a;color:#f0d38a;background:rgba(240,211,138,.18)}
 #bGrab:active{background:rgba(240,211,138,.24)}
+
+/* ที่ปรึกษาสองฝ่าย — ลอยอยู่สองข้างจอ ไม่บังเกาะ และไม่รับการแตะ */
+#advisors{position:absolute;inset:0;pointer-events:none;z-index:3;
+  display:flex;flex-direction:column;justify-content:center;gap:10px;padding:0 12px}
+.adv{max-width:15em;font-size:12.5px;line-height:1.7;padding:9px 13px;border-radius:14px;
+  opacity:0;transform:translateY(6px);transition:opacity .5s ease,transform .5s ease;
+  backdrop-filter:blur(8px)}
+.adv.show{opacity:1;transform:none}
+.adv.kind{align-self:flex-start;background:rgba(10,30,26,.94);color:#d4f2e0;
+  border:1px solid rgba(143,214,166,.5)}
+.adv.cruel{align-self:flex-end;text-align:right;background:rgba(38,12,14,.94);color:#f7d0d0;
+  border:1px solid rgba(214,120,120,.5)}
+@media (max-width:560px){ .adv{max-width:11em;font-size:11.5px} }

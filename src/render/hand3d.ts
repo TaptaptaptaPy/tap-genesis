@@ -44,6 +44,24 @@ export class Hand3D {
     this.palm = new THREE.Mesh(palmGeo, this.mat);
     this.root.add(this.palm);
 
+    // ข้อนิ้วเป็นตุ่มเล็กๆ ที่โคนนิ้ว ทำให้หลังมือไม่เรียบเป็นแผ่น
+    const knuckle = new THREE.SphereGeometry(0.07, 8, 6);
+    for (const kx of [-0.23, -0.08, 0.08, 0.22]) {
+      const k = new THREE.Mesh(knuckle, this.mat);
+      k.position.set(kx, 0.06, 0.32);
+      this.root.add(k);
+    }
+
+    // ข้อมือกับท่อนแขนสั้นๆ — มือที่ลอยเปล่าๆ ดูเหมือนของเล่นมากกว่ามือ
+    const wrist = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.26, 0.62, 10), this.mat);
+    wrist.rotation.x = Math.PI / 2;
+    wrist.position.set(0, 0.01, -0.42);
+    this.root.add(wrist);
+    const cuff = new THREE.Mesh(new THREE.TorusGeometry(0.27, 0.05, 6, 14),
+      new THREE.MeshLambertMaterial({ color: 0xd9a437, transparent: true, opacity: 0.9 }));
+    cuff.position.set(0, 0.01, -0.66);
+    this.root.add(cuff);
+
     // สี่นิ้วเรียงหน้าฝ่ามือ บวกนิ้วโป้งที่กางออกข้าง
     // นิ้วกางออกเป็นพัดและยาวไม่เท่ากัน ถ้าเรียงขนานยาวเท่ากันจะอ่านออกเป็น "คราด" ไม่ใช่มือ
     const layout: [number, number, number, number][] = [
@@ -80,6 +98,7 @@ export class Hand3D {
         new THREE.MeshLambertMaterial({ color: 0x2f5c3a })),
       food: new THREE.Mesh(new THREE.SphereGeometry(0.15, 10, 8),
         new THREE.MeshLambertMaterial({ color: 0xd8b25c })),
+      folk: folkMesh(),
     };
     for (const m of Object.values(this.held)) {
       m.position.set(0, -0.06, 0.34);
@@ -132,13 +151,24 @@ export class Hand3D {
 }
 
 
+/** คนที่อยู่ในมือหรือกำลังลอยอยู่ — ตัวเล็กมากแต่ต้องดูออกว่าเป็นคน ไม่ใช่ก้อนอะไรสักอย่าง */
+function folkMesh(): THREE.Mesh {
+  const body = new THREE.Mesh(new THREE.ConeGeometry(0.075, 0.24, 6),
+    new THREE.MeshLambertMaterial({ color: 0x9a5340 }));
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.055, 8, 6),
+    new THREE.MeshLambertMaterial({ color: 0x8a6f58 }));
+  head.position.y = 0.17;
+  body.add(head);
+  return body;
+}
+
 /** ของที่กำลังลอยอยู่กลางอากาศ
  *  ใช้ mesh สำรองไว้จำนวนหนึ่งแล้วซ่อน/แสดงเอา ถูกกว่าการสร้างใหม่ทุกครั้งที่ขว้าง */
 const POOL = 12;
 
 export class Thrown3D {
   readonly group = new THREE.Group();
-  private slots: { rock: THREE.Mesh; tree: THREE.Mesh; food: THREE.Mesh }[] = [];
+  private slots: Record<CarryKind, THREE.Mesh>[] = [];
 
   constructor() {
     const mat = {
@@ -156,6 +186,7 @@ export class Thrown3D {
         rock: new THREE.Mesh(geo.rock, mat.rock),
         tree: new THREE.Mesh(geo.tree, mat.tree),
         food: new THREE.Mesh(geo.food, mat.food),
+        folk: folkMesh(),
       };
       for (const m of Object.values(set)) { m.visible = false; m.castShadow = true; this.group.add(m); }
       this.slots.push(set);

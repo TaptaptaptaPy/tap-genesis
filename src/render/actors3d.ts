@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { bodySize } from "../sim/creature";
 import { influenceOf } from "../sim/village";
+import balance from "../../data/balance.json";
 import type { Creature, GameState, NeedId, Village } from "../sim/types";
 import { groundY } from "./terrain3d";
 
@@ -30,6 +31,7 @@ function askTexture(need: NeedId): THREE.Texture {
 interface VillageParts {
   root: THREE.Group; huts: THREE.Group; ring: THREE.Mesh; ask: THREE.Sprite;
   fire: THREE.Mesh; glow: THREE.Sprite; inf: THREE.Mesh;
+  hall: THREE.Group; totem: THREE.Group; wall: THREE.Mesh;
 }
 
 /** แสงกองไฟตอนกลางคืน — ใช้ sprite ไล่สีแทน PointLight จริง
@@ -138,6 +140,45 @@ export class Villages3D {
     glow.position.y = 0.3;
     root.add(glow);
 
+    // หมู่บ้านโตพอจะมีศาลากลาง — รูปทรงบอกขนาดได้ดีกว่าการนับหลังคา
+    const hall = new THREE.Group();
+    const hallWall = new THREE.Mesh(new THREE.BoxGeometry(1.15, 0.5, 0.78),
+      new THREE.MeshLambertMaterial({ color: 0xcdb98f }));
+    hallWall.position.y = 0.25;
+    const hallRoof = new THREE.Mesh(new THREE.ConeGeometry(0.88, 0.62, 4),
+      new THREE.MeshLambertMaterial({ color: 0x8f5a33 }));
+    hallRoof.position.y = 0.78;
+    hallRoof.rotation.y = Math.PI / 4;
+    hallWall.castShadow = hallRoof.castShadow = true;
+    hall.add(hallWall, hallRoof);
+    hall.position.set(0, 0, -1.05);
+    hall.visible = false;
+    root.add(hall);
+
+    // เสาบูชากลางหมู่บ้าน โผล่เมื่อผู้คนเชื่อมากพอ
+    const totem = new THREE.Group();
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.08, 1.5, 6),
+      new THREE.MeshLambertMaterial({ color: 0x6b4a2f }));
+    pole.position.y = 0.75;
+    const disc = new THREE.Mesh(new THREE.TorusGeometry(0.22, 0.05, 6, 14),
+      new THREE.MeshLambertMaterial({ color: 0xd9a437 }));
+    disc.position.y = 1.5;
+    disc.rotation.x = Math.PI / 2;
+    pole.castShadow = true;
+    totem.add(pole, disc);
+    totem.position.set(0.55, 0, 0.9);
+    totem.visible = false;
+    root.add(totem);
+
+    // เมืองใหญ่มีรั้วรอบ
+    const wall = new THREE.Mesh(
+      new THREE.TorusGeometry(1.75, 0.075, 5, 26),
+      new THREE.MeshLambertMaterial({ color: 0x7a6242 }));
+    wall.rotation.x = Math.PI / 2;
+    wall.position.y = 0.16;
+    wall.visible = false;
+    root.add(wall);
+
     // ขอบเขตที่ร่ายคาถาได้ — ถ้าไม่วาดไว้ ข้อความ "ไกลเกินเขตที่ผู้คนศรัทธาท่าน" จะไม่มีทางเข้าใจได้
     // ใช้วงรัศมี 1 แล้วค่อยขยายตามค่าจริง จะได้ไม่ต้องสร้าง geometry ใหม่ทุกเฟรม
     const inf = new THREE.Mesh(
@@ -148,7 +189,7 @@ export class Villages3D {
     inf.position.y = 0.06;
     root.add(inf);
 
-    return { root, huts, ring, ask, fire, glow, inf };
+    return { root, huts, ring, ask, fire, glow, inf, hall, totem, wall };
   }
 
   private refresh(_s: GameState, v: Village, e: VillageParts, time: number, daylight: number) {
@@ -167,6 +208,12 @@ export class Villages3D {
       (e.ask.material as THREE.SpriteMaterial).needsUpdate = true;
       e.ask.position.y = 1.9 + Math.sin(time * 0.004 + v.id) * 0.12;
     } else e.ask.visible = false;
+
+    const T = balance.town;
+    e.hall.visible = v.pop >= T.hallAtPop;
+    e.totem.visible = v.belief >= T.totemAtBelief;
+    e.wall.visible = v.pop >= T.wallAtPop;
+    if (e.totem.visible) e.totem.rotation.y = time * 0.0004;
 
     const rad = influenceOf(v);
     e.inf.scale.set(rad, rad, 1);

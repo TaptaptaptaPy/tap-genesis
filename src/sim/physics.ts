@@ -1,7 +1,7 @@
 import { clamp, type Rng } from "../core/rng";
 import { isWater } from "./biomes";
 import { setBiome, tileAt } from "./world";
-import { addAwe, nearestVillage } from "./village";
+import { addAwe, faithCap, nearestVillage } from "./village";
 import { remember } from "./creature";
 import type { CarryKind, GameState, Projectile, Tile } from "./types";
 import balance from "../../data/balance.json";
@@ -21,12 +21,14 @@ import balance from "../../data/balance.json";
 const P = balance.physics;
 
 export const CARRY_NAME: Record<CarryKind, string> = {
-  rock: "ก้อนหิน", tree: "ต้นไม้", food: "อาหาร",
+  rock: "ก้อนหิน", tree: "ต้นไม้", food: "อาหาร", folk: "ผู้คน",
 };
 
 /** ช่องนี้มีอะไรให้หยิบไหม — ดูจากสิ่งที่มีอยู่จริงบนช่อง ไม่ใช่รายการตายตัว */
 export function whatIsAt(t: Tile | null): CarryKind | null {
   if (!t || isWater(t.biome)) return null;
+  // คนมาก่อนของ ถ้ายืนบนหมู่บ้านก็ควรได้หยิบคน ไม่ใช่หยิบก้อนหินใต้บ้านเขา
+  if (t.village && t.village.pop >= P.folkMinPop) return "folk";
   if (t.biome === "FOREST" || t.biome === "LUSH") return "tree";
   if (t.biome === "HILL" || t.biome === "MOUNT" || t.biome === "ASH") return "rock";
   if (t.fert >= P.grabFertNeeded) return "food";
@@ -43,6 +45,14 @@ export function grabAt(s: GameState, x: number, y: number, log: (m: string) => v
 
   if (kind === "tree") setBiome(s, t, "GRASS");
   else if (kind === "food") t.fert = Math.max(0, t.fert - 0.35);
+  else if (kind === "folk" && t.village) {
+    // หยิบคนขึ้นมาคือเอาคนออกจากหมู่บ้านจริงๆ ไม่ใช่ภาพลวง
+    t.village.pop = Math.max(1, t.village.pop - 1);
+    addAwe(t.village, 0.12);
+  }
+  // หยิบคนขึ้นมาแล้วผู้ศรัทธาลด เพดานศรัทธาก็ลดตาม ต้องตัดทันที
+  // ไม่งั้นจะมีช่วงที่ศรัทธาสูงกว่าเพดานจนกว่าจะถึง tick ถัดไป
+  if (kind === "folk") s.faith = Math.min(s.faith, faithCap(s));
   s.carrying = kind;
   s.carryFrom = { x, y };
   log(`ท่านหยิบ${CARRY_NAME[kind]}ขึ้นมา`);
@@ -116,9 +126,13 @@ function impact(s: GameState, p: Projectile, t: Tile | null, rng: Rng, log: (m: 
   const water = isWater(t.biome);
 
   if (water) {
-    // ตกน้ำก็แค่ตกน้ำ ไม่มีใครเจ็บ — ความสมเหตุสมผลเล็กๆ ที่ทำให้โลกน่าเชื่อ
     s.fx.push({ kind: "ripple", x: p.x, y: p.y, t: 0, life: 1.2 });
-    log(`${CARRY_NAME[p.kind]}ตกลงกลางน้ำ`);
+    if (p.kind === "folk") {
+      // ทิ้งคนลงทะเลมีราคาของมัน และทุกหมู่บ้านรู้
+      s.align = clamp(s.align + P.folkDrownAlign, -1, 1);
+      for (const v of s.villages) addAwe(v, P.folkDrownAwe * 0.5);
+      log("ท่านทิ้งผู้คนลงทะเล");
+    } else log(`${CARRY_NAME[p.kind]}ตกลงกลางน้ำ`);
     return;
   }
 
@@ -147,6 +161,23 @@ function impact(s: GameState, p: Projectile, t: Tile | null, rng: Rng, log: (m: 
         log("ต้นไม้ลงหลักปักฐานที่ใหม่");
       } else log("ต้นไม้ขึ้นบนหินไม่ได้");
       break;
+
+    case "folk": {
+      const home = nearestVillage(s, p.x, p.y);
+      const d = home ? Math.hypot(home.x + 0.5 - p.x, home.y + 0.5 - p.y) : 99;
+      if (home && d <= P.folkLandRadius) {
+        home.pop += 1;
+        addAwe(home, 0.15);
+        s.align = clamp(s.align + P.folkMoveAlign, -1, 1);
+        s.fx.push({ kind: "spark", x: p.x, y: p.y, t: 0, life: 1.1, color: "#f0d38a" });
+        log(`ผู้คนเข้าไปอยู่กับหมู่บ้าน${home.name}`);
+      } else {
+        // ตกกลางที่ไม่มีใคร คนคนนั้นก็เดินหายไปในป่า
+        s.fx.push({ kind: "dust", x: p.x, y: p.y, t: 0, life: 1 });
+        log("ผู้คนหายเข้าไปในป่า");
+      }
+      break;
+    }
 
     case "food":
       t.fert = clamp(t.fert + 0.3, 0, 1);
