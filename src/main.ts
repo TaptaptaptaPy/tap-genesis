@@ -188,8 +188,12 @@ function onTap(sx: number, sy: number) {
   if (armed) {
     const before = s.terrainVersion;
     const ok = castSpell(s, armed, hit.x, hit.y, game.rng, log);
-    if (ok) (sfx as Record<string, () => void>)[armed]?.();
-    else sfx.deny();
+    if (ok) {
+      (sfx as Record<string, () => void>)[armed]?.();
+      // กล้องขยับเข้าไปดูสิ่งที่เพิ่งเกิด แล้วคืนมุมเดิมให้ผู้เล่น
+      // ถ้าไม่มีอะไรตอบกลับ ปาฏิหาริย์จะรู้สึกเหมือนแค่ตัวเลขที่ลดลง
+      world.emphasise(hit.x + 0.5, groundY(s, hit.x + 0.5, hit.y + 0.5), hit.y + 0.5);
+    } else sfx.deny();
     if (s.terrainVersion !== before) rebuildTerrain();
     return;
   }

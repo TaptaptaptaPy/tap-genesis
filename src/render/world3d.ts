@@ -154,6 +154,32 @@ export class World3D {
     this.elevation = Math.min(this.elevation, 0.62);
   }
 
+  /** เน้นจุดหนึ่งสั้นๆ แล้วคืนกล้องให้ผู้เล่นเหมือนเดิม
+   *
+   *  ปาฏิหาริย์ตอนนี้แค่ "เกิดขึ้น" — ไม่มีอะไรบอกว่ามันใหญ่
+   *  การขยับกล้องเข้าไปหนึ่งวินาทีทำให้มันรู้สึกว่ามีน้ำหนัก
+   *  ต้องคืนค่าเดิมเสมอ ห้ามยึดกล้องไปจากผู้เล่น — เขาเป็นคนตั้งมุมไว้เอง
+   */
+  private punchBack: { dist: number; center: THREE.Vector3 } | null = null;
+  private punchLeft = 0;
+
+  emphasise(x: number, y: number, z: number, strength = 0.28) {
+    if (!this.punchBack)
+      this.punchBack = { dist: this.targetDistance, center: this.targetCenter.clone() };
+    this.punchLeft = 1.1;
+    this.targetDistance = Math.max(4, this.punchBack.dist * (1 - strength));
+    this.targetCenter.lerp(new THREE.Vector3(x, y, z), 0.55);
+  }
+
+  private stepPunch(dt: number) {
+    if (!this.punchBack) return;
+    this.punchLeft -= dt;
+    if (this.punchLeft > 0) return;
+    this.targetDistance = this.punchBack.dist;
+    this.targetCenter.copy(this.punchBack.center);
+    this.punchBack = null;
+  }
+
   /** ถอยกลับไปมองทั้งเกาะ */
   resetView() {
     this.targetCenter.set(W / 2, 0, H / 2);
@@ -214,6 +240,7 @@ export class World3D {
 
   /** `groundAt` ใช้กันกล้องมุดลงไปใต้ดินตอนซูมใกล้ — ฉากไม่รู้จักภูมิประเทศ จึงต้องรับเข้ามา */
   update(dt: number, groundAt?: (x: number, z: number) => number) {
+    this.stepPunch(dt);
     this.distance += (this.targetDistance - this.distance) * Math.min(1, dt * 6);
     this.center.lerp(this.targetCenter, Math.min(1, dt * 4));
     const r = this.distance * Math.cos(this.elevation);

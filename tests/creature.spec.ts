@@ -123,3 +123,43 @@ test("สัตว์กับชาวบ้านต้องเอียง�
   expect(r.tilt, "เกาะนี้ราบไปหมด ทดสอบไม่ได้").toBeGreaterThan(0.02);
   expect(r.localUpY, "หมุนแล้วแกนขึ้นยังชี้ตรงเป๊ะ แปลว่าไม่ได้เอียงตามพื้น").toBeLessThan(0.999);
 });
+
+/** ปาฏิหาริย์กับการเปลี่ยนแปลงของโลกต้องมีอะไรตอบกลับ ไม่ใช่แค่ตัวเลขที่ขยับ */
+test("ปลูกป่าแล้วต้นไม้ค่อยๆ โต ไม่ใช่ผุดมาเต็มต้น", async ({ page }) => {
+  await page.goto("/?seed=20260915&t=0.3");
+  await page.waitForFunction(() => (window as any).__genesis?.propsReady === true);
+
+  const r = await page.evaluate(async () => {
+    const g = (window as any).__genesis;
+    const s = g.game.state;
+    const t = g.terrain();
+    const before = t.trees?.count ?? 0;
+
+    // เปลี่ยนช่องหญ้าให้เป็นป่าแล้วสั่งสร้างใหม่ เหมือนตอนคาถาปลูกป่าลง
+    let changed = 0;
+    for (const tile of s.tiles) {
+      if (tile.biome === "GRASS" && changed < 14) { tile.biome = "FOREST"; changed++; }
+    }
+    s.terrainVersion++;
+    t.update(s, performance.now(), 1);
+
+    const growing = (t as any).growing?.length ?? 0;
+    // อ่านสเกลจาก instanceMatrix ตรงๆ แทนที่จะ import three เข้ามาในหน้า
+    // (ในหน้าเว็บดิบๆ ชื่อ "three" ไม่มีความหมาย vite แปลงให้เฉพาะไฟล์ที่มันเสิร์ฟเอง)
+    const colLen = (arr: Float32Array, base: number) =>
+      Math.hypot(arr[base], arr[base + 1], arr[base + 2]);
+    let smallest = 1;
+    if (growing) {
+      const gi = (t as any).growing[0];
+      const now = colLen(t.trees.instanceMatrix.array as Float32Array, gi.i * 16);
+      const full = colLen(gi.m.elements as unknown as Float32Array, 0);
+      smallest = now / Math.max(1e-6, full);
+    }
+    return { before, after: t.trees?.count ?? 0, growing, smallest };
+  }).catch(() => null);
+
+  expect(r, "โหลดโมดูล three ในหน้าไม่ได้").not.toBeNull();
+  expect(r!.after, "ควรมีต้นไม้เพิ่มขึ้นหลังเปลี่ยนเป็นป่า").toBeGreaterThan(r!.before);
+  expect(r!.growing, "ต้นที่เพิ่งเกิดต้องอยู่ในคิวค่อยๆ โต").toBeGreaterThan(0);
+  expect(r!.smallest, "เฟรมแรกต้องเล็กกว่าขนาดเต็มมาก").toBeLessThan(0.3);
+});

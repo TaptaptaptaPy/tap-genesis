@@ -68,6 +68,11 @@ export class Terrain3D {
   /** เวลาของลม เดินตาม dt ของเกม ไม่ใช่นาฬิกาจริง — กด 4× แล้วลมต้องแรงขึ้นด้วย */
   private wind = { value: 0 };
   private grass?: THREE.InstancedMesh;
+  /** ต้นไม้ที่เพิ่งขึ้นมาใหม่ — ค่อยๆ โตแทนที่จะผุดมาเต็มต้นทันที
+   *  เก็บเป็นช่องของ instance กับเวลาที่ผ่านไป และเมทริกซ์เป้าหมายที่ต้องโตไปให้ถึง */
+  private growing: { i: number; t: number; m: THREE.Matrix4 }[] = [];
+  /** ช่องที่มีต้นไม้อยู่แล้วรอบก่อน ใช้แยกว่าต้นไหนเพิ่งขึ้น */
+  private treeTilesBefore = new Set<number>();
   readonly propsReady: Promise<void>;
   private water: Water3D;
 
@@ -139,6 +144,23 @@ export class Terrain3D {
     }
     this.water.update(s, time, daylight);
     this.wind.value = time * 0.001;
+    this.stepGrowth(1 / 60);
+  }
+
+  /** ต้นไม้ที่เพิ่งเกิด ค่อยๆ โตขึ้นจนเต็มต้นในราวหนึ่งวินาทีครึ่ง */
+  private stepGrowth(dt: number) {
+    if (!this.growing.length || !this.trees) return;
+    const left: typeof this.growing = [];
+    for (const g of this.growing) {
+      g.t += dt / 1.5;
+      if (g.t >= 1) { this.trees.setMatrixAt(g.i, g.m); continue; }
+      // โตแบบเด้งนิดๆ ตอนจบ ให้รู้สึกว่ามันดันตัวขึ้นมาจากดิน
+      const e = 1 - Math.pow(1 - g.t, 3);
+      this.trees.setMatrixAt(g.i, scaledCopy(g.m, 0.02 + e * 0.98));
+      left.push(g);
+    }
+    this.trees.instanceMatrix.needsUpdate = true;
+    this.growing = left;
   }
 
   private refresh(s: GameState, rebuildProps: boolean) {
@@ -178,6 +200,7 @@ export class Terrain3D {
     const trees = new THREE.InstancedMesh(tgeo, tmat, Math.max(1, treeTiles.length * perTile));
     trees.castShadow = true;
     const m = new THREE.Matrix4(), q = new THREE.Quaternion(), sc = new THREE.Vector3();
+    const newKeys: number[] = [];
     let n = 0;
     for (const t of treeTiles) {
       for (let k = 0; k < perTile; k++) {
@@ -189,6 +212,7 @@ export class Terrain3D {
         const scale = 0.75 + hs * 0.65;
         sc.set(scale, scale * (0.8 + hs * 0.5), scale);
         m.compose(new THREE.Vector3(px, py, pz), q, sc);
+        newKeys[n] = t.y * W + t.x;
         trees.setMatrixAt(n++, m);
       }
     }
@@ -196,6 +220,25 @@ export class Terrain3D {
     trees.instanceMatrix.needsUpdate = true;
     this.trees = trees;
     this.group.add(trees);
+
+    // ต้นที่ขึ้นบนช่องที่รอบก่อนยังไม่มีป่า = เพิ่งเกิด ให้มันค่อยๆ โต
+    // ป่าที่ผุดมาเต็มต้นทันทีทำให้คาถาปลูกป่าดูเหมือนแค่ตัวเลขเปลี่ยน ไม่ใช่สิ่งที่งอกขึ้นมา
+    const seen = new Set<number>(treeTiles.map((t) => t.y * W + t.x));
+    const fresh = this.treeTilesBefore.size > 0;
+    this.growing = [];
+    if (fresh) {
+      for (let i = 0; i < n; i++) {
+        const key = newKeys[i];
+        if (this.treeTilesBefore.has(key)) continue;
+        const m0 = new THREE.Matrix4();
+        trees.getMatrixAt(i, m0);
+        this.growing.push({ i, t: 0, m: m0.clone() });
+        // เริ่มจากเล็กจิ๋วแล้วค่อยโตใน update()
+        trees.setMatrixAt(i, scaledCopy(m0, 0.02));
+      }
+      trees.instanceMatrix.needsUpdate = true;
+    }
+    this.treeTilesBefore = seen;
 
     const rockTiles = s.tiles.filter((t) => (t.biome === "MOUNT" || t.biome === "SNOW" || t.biome === "HILL")
       && (t.x * 5 + t.y * 3) % 3 === 0 && clearOf(t));
@@ -277,6 +320,16 @@ export class Terrain3D {
 }
 
 const frac = (v: number) => v - Math.floor(v);
+
+/** สำเนาเมทริกซ์ที่ถูกย่อรอบจุดยืนของมันเอง ไม่ใช่รอบจุดกำเนิดของโลก
+ *  ถ้าย่อรอบจุดกำเนิด ต้นไม้จะวิ่งเข้าหากลางเกาะแทนที่จะโตอยู่กับที่ */
+const _p = /* @__PURE__ */ new THREE.Vector3();
+const _q = /* @__PURE__ */ new THREE.Quaternion();
+const _s = /* @__PURE__ */ new THREE.Vector3();
+function scaledCopy(m: THREE.Matrix4, k: number): THREE.Matrix4 {
+  m.decompose(_p, _q, _s);
+  return new THREE.Matrix4().compose(_p, _q, _s.clone().multiplyScalar(k));
+}
 
 /** ความสูงที่จุดใดๆ บนเกาะ (ผสมสี่ช่องรอบตัว) — ใช้วางหมู่บ้าน สัตว์ และเอฟเฟกต์ */
 export function sampleH(s: GameState, x: number, z: number): number {
