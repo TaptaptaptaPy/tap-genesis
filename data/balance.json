@@ -1,77 +1,20 @@
 {
   "_comment": "ตัวเลขสมดุลทั้งหมดอยู่ที่นี่ที่เดียว แก้ไฟล์นี้ไม่ต้องแตะโค้ด",
+  "_scope": "ตัดเหลือแกน Black & White: ศรัทธา → ปาฏิหาริย์ → สัตว์ที่สอนได้ → หมู่บ้านที่ต้องการเรา",
   "world": {
-    "W": 44,
-    "H": 32,
-    "minLandRatio": 0.3,
-    "maxLandRatio": 0.62
+    "W": 24,
+    "H": 24,
+    "minLandRatio": 0.34,
+    "maxLandRatio": 0.62,
+    "seaLevel": 0.47
   },
   "time": {
     "tickSeconds": 0.45,
-    "ticksPerYear": 180,
-    "ticksPerSeason": 45
-  },
-  "season": {
-    "_comment": "ฤดูหมุนวน 4 ฤดู ฤดูละ ticksPerSeason — ตัวคูณด้านล่างคูณเข้ากับค่าฐานในหมวด land/village",
-    "names": [
-      "ฤดูผลิ",
-      "ฤดูฝน",
-      "ฤดูเก็บเกี่ยว",
-      "ฤดูแล้ง"
-    ],
-    "regenMult": [
-      1.35,
-      1.15,
-      1.0,
-      0.5
-    ],
-    "yieldMult": [
-      0.9,
-      1.0,
-      1.35,
-      0.8
-    ],
-    "wetDecayMult": [
-      1.0,
-      0.45,
-      1.1,
-      2.2
-    ],
-    "rainChance": [
-      0.012,
-      0.045,
-      0.008,
-      0.0
-    ],
-    "tint": [
-      "#8fd18a",
-      "#7fb4d4",
-      "#e0b463",
-      "#d98f5a"
-    ]
+    "ticksPerYear": 160
   },
   "village": {
-    "popCapByEra": [
-      30,
-      46,
-      66,
-      92,
-      130
-    ],
-    "workRadiusByEra": [
-      2,
-      2,
-      3,
-      3,
-      4
-    ],
-    "yieldMultByEra": [
-      1,
-      1.25,
-      1.55,
-      1.9,
-      2.4
-    ],
+    "popCap": 80,
+    "workRadius": 2,
     "harvestRate": 0.05,
     "depletionFactor": 0.9,
     "intensityDivisor": 22,
@@ -79,19 +22,15 @@
     "growthGain": 3.0,
     "famineGain": 2.2,
     "beliefDrift": 0.02,
-    "faithPerBeliever": 0.028,
-    "knowPerPop": 0.006,
+    "faithPerBeliever": 0.03,
     "splitAtCapRatio": 0.85,
-    "splitMinAge": 60,
-    "splitChance": 0.03,
-    "splitNeedsFood": 0.92,
-    "splitNeedsWood": 0.5,
-    "minSpacingBonus": 4,
-    "crowdingDivisor": 5,
-    "tilesPerVillage": 55
+    "splitMinAge": 70,
+    "splitChance": 0.02,
+    "minSpacing": 5,
+    "tilesPerVillage": 46
   },
   "needs": {
-    "_comment": "ศรัทธาไม่ใช่ค่าคงที่อีกต่อไป — มันคือผลรวมของความต้องการที่ถูกเติมเต็ม บวกความทรงจำถึงปาฏิหาริย์ล่าสุด",
+    "_comment": "ศรัทธาคือผลรวมของความต้องการที่ถูกเติมเต็ม บวกความทรงจำถึงปาฏิหาริย์ล่าสุด",
     "beliefFloor": 0.12,
     "beliefFromFood": 0.3,
     "beliefFromWood": 0.16,
@@ -101,107 +40,60 @@
     "aweFromMiracle": 0.45,
     "aweFromRescue": 0.7,
     "woodPerForestTile": 0.05,
+    "woodPerLushTile": 0.018,
     "woodNeedPerPop": 0.0012,
     "woodStoreMax": 40,
     "shelterPerWood": 0.9,
     "shelterDecayPerTick": 0.0035,
     "shelterNeedPerPop": 0.035,
     "unmetPopPenalty": 0.55,
-    "woodPerLushTile": 0.018,
     "smoothing": 0.08,
-    "foodScale": 1.15
+    "foodScale": 1.15,
+    "askThreshold": 0.55,
+    "askCooldownTicks": 140
   },
   "land": {
-    "regen": 0.022,
+    "regen": 0.026,
     "wetDecay": 0.012,
     "wetCapBonus": 0.75,
     "burnDecay": 0.02,
-    "fireSpreadChance": 0.16,
+    "fireSpreadChance": 0.14,
     "fireNeedsDryness": 0.25
   },
-  "era": {
-    "knowThresholds": [
-      0,
-      250,
-      1500,
-      6000,
-      20000
-    ],
-    "names": [
-      "เผ่าแรก",
-      "ยุคสำริด",
-      "ยุคเหล็ก",
-      "ยุครุ่งเรือง",
-      "ยุคจักรกล"
-    ],
-    "faithCapBase": 500,
-    "faithCapPerEra": 250
+  "faith": {
+    "_comment": "เพดานศรัทธาโตตามจำนวนผู้ศรัทธา ไม่ใช่ตามยุค — ยิ่งดูแลคนได้มาก ยิ่งร่ายคาถาใหญ่ได้",
+    "capBase": 120,
+    "capPerBeliever": 6
   },
   "disaster": {
     "_comment": "ภัยพิบัติคือจังหวะที่ผู้เล่นต้องเข้าไปช่วย ถ้าไม่มีอะไรเลวร้ายเลย ปาฏิหาริย์ก็ไม่มีความหมาย",
     "checkEveryTicks": 20,
-    "baseChance": 0.22,
-    "chancePerEra": 0.03,
-    "minTicksBetween": 90,
-    "drought": {
-      "weightBySeason": [
-        0.4,
-        0.05,
-        0.6,
-        2.4
-      ],
-      "radius": 5,
-      "fertMult": 0.35,
-      "durationTicks": 70
-    },
-    "wildfire": {
-      "weightBySeason": [
-        0.5,
-        0.1,
-        1.0,
-        2.0
-      ],
-      "radius": 1,
-      "durationTicks": 50
-    },
-    "plague": {
-      "weightBySeason": [
-        1.0,
-        1.4,
-        0.8,
-        0.7
-      ],
-      "popMultPerTick": 0.988,
-      "durationTicks": 60,
-      "beliefDrain": 0.0035
-    },
-    "flood": {
-      "weightBySeason": [
-        0.8,
-        2.2,
-        0.4,
-        0.05
-      ],
-      "radius": 3,
-      "popMult": 0.82,
-      "fertAfter": 0.22,
-      "durationTicks": 30
-    },
-    "graceTicks": 260
+    "baseChance": 0.24,
+    "minTicksBetween": 120,
+    "graceTicks": 300,
+    "weights": { "drought": 1.0, "wildfire": 1.0, "plague": 1.0, "flood": 0.8 },
+    "drought": { "radius": 4, "fertMult": 0.35, "durationTicks": 70 },
+    "wildfire": { "radius": 1, "durationTicks": 50 },
+    "plague": { "popMultPerTick": 0.988, "durationTicks": 60, "beliefDrain": 0.0035 },
+    "flood": { "radius": 3, "popMult": 0.82, "fertAfter": 0.22, "durationTicks": 30 }
   },
   "creature": {
+    "_comment": "สัตว์ตัวเดียวที่เป็นของผู้เล่น สอนได้ โตได้ และจำสถานที่ได้",
     "mutation": 0.075,
     "inheritToBest": 0.35,
     "learnBase": 0.14,
     "learnPerIntel": 0.3,
-    "feedbackWindowSeconds": 6,
-    "baseLifeTicks": 190,
-    "lifePerSize": 130,
-    "lifePerMeta": 70,
-    "drainBase": 0.0085,
+    "feedbackWindowSeconds": 7,
+    "baseLifeTicks": 420,
+    "lifePerSize": 200,
+    "lifePerMeta": 110,
+    "drainBase": 0.0062,
     "harshPenalty": 1.5,
     "waterPenalty": 1.8,
+    "shallowDrainRelief": 0.45,
+    "shallowFoodFactor": 0.75,
     "eatFraction": 0.55,
+    "eatFloor": 0.028,
     "eatBase": 0.14,
     "eatPerSize": 0.12,
     "eatDepletion": 0.7,
@@ -211,23 +103,18 @@
     "raidPerAggr": 2.5,
     "raidPerPop": 0.04,
     "raidFloorPop": 3,
+    "raidMaxFraction": 0.1,
+    "raidDefencePerPop": 0.018,
+    "raidInjuryBase": 0.04,
+    "raidInjuryPerPop": 0.0008,
+    "raidInjuryMax": 0.22,
     "farmAvoidRadius": 2.2,
     "farmAvoidFactor": 0.45,
     "growthPerFood": 0.045,
-    "growthMax": 0.55,
-    "eatFloor": 0.028,
-    "shallowFoodFactor": 0.75,
-    "shallowDrainRelief": 0.45,
-    "raidMaxFraction": 0.1,
-    "raidDefencePerPop": 0.018,
-    "raidDefencePerEra": 0.4,
-    "raidInjuryBase": 0.04,
-    "raidInjuryPerPop": 0.0008,
-    "raidInjuryPerEra": 0.03,
-    "raidInjuryMax": 0.22
+    "growthMax": 0.55
   },
   "memory": {
-    "_comment": "สัตว์จำ 'ที่ไหนดี ที่ไหนแย่' ไม่ใช่แค่ 'ทำอะไรดี' — นี่คือส่วนที่ทำให้มันรู้สึกเหมือนสัตว์เลี้ยงจริง",
+    "_comment": "สัตว์จำ 'ที่ไหนดี ที่ไหนแย่' ไม่ใช่แค่ 'ทำอะไรดี' — นี่คือหัวใจของการเลี้ยงสัตว์ใน B&W",
     "maxEntries": 140,
     "learnRate": 0.34,
     "decayPerTick": 0.9992,
@@ -235,30 +122,11 @@
     "curiosity": 0.22,
     "teachPlaceWeight": 1.6
   },
-  "population": {
-    "_comment": "ประชากรสัตว์ป่าที่คัดเลือกกันเองจริง — สัตว์ของผู้เล่นเป็นหนึ่งในนั้น",
-    "startWild": 6,
-    "maxCreatures": 9,
-    "breedEnergy": 0.62,
-    "breedCooldownTicks": 55,
-    "breedRadius": 4.5,
-    "breedChance": 0.35,
-    "crossover": 0.5,
-    "wildMutation": 0.085,
-    "minAgeToBreed": 35,
-    "seekMateRadius": 16,
-    "wildRaidBias": 0.35,
-    "mateUrge": 1.4,
-    "minWild": 3,
-    "wildSpawnChance": 0.025,
-    "wildRaidFromEra": 1
-  },
   "pet": {
-    "_comment": "ความต้องการที่ผู้เล่นมองเห็นได้ ทำให้ 'เลี้ยง' เป็นกริยาจริง",
     "hungerAt": 0.45,
     "tiredAt": 0.22,
     "boredAfterTicks": 60,
-    "commandHoldTicks": 90,
+    "commandHoldTicks": 120,
     "obedienceBase": 0.55,
     "obediencePerIntel": 0.35,
     "obedienceFromBond": 0.3,
@@ -266,33 +134,13 @@
     "bondPerScold": -0.02,
     "bondDecayPerTick": 0.9997
   },
-  "rival": {
-    "_comment": "เทพคู่แข่ง: มีศรัทธาของตัวเอง ร่ายคาถาเองได้ และแย่งใจหมู่บ้านกับผู้เล่น",
-    "enabled": true,
-    "startFaith": 40,
-    "appearsAtEra": 1,
-    "thinkEveryTicks": 26,
-    "aggression": 0.55,
-    "faithCapBase": 450,
-    "faithCapPerEra": 220,
-    "devotionDriftPerTick": 0.0016,
-    "devotionFromMiracle": 0.2,
-    "devotionFromHarm": -0.12,
-    "convertThreshold": 0.55,
-    "names": [
-      "มารเงา",
-      "ผู้ไร้นาม",
-      "เทพคู่ฟ้า",
-      "เสียงใต้ภูผา"
-    ]
-  },
   "start": {
-    "faith": 30,
+    "faith": 40,
     "villagePop": 10,
-    "deadFaithFloor": 45
+    "deadFaithFloor": 25
   },
   "align": {
-    "_comment": "แกนธรรมต้องสะท้อน 'ทางเลือกของผู้เล่น' ไม่ใช่พฤติกรรมสัตว์ล้วนๆ จึงต้องมีแรงดึงกลับสู่กลาง",
+    "_comment": "แกนธรรมต้องสะท้อน 'ทางเลือกของผู้เล่น' จึงต้องมีแรงดึงกลับสู่กลาง",
     "decayPerTick": 0.9985,
     "creatureRaid": -0.015,
     "creatureHelp": 0.012,

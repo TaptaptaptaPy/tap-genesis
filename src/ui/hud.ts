@@ -1,7 +1,6 @@
-import { ACTION_NAME, GENE_NAME, NEED_NAME, SPELLS, spellCost, bodySize, maxAge, petOf,
-         loyalPop, maxVillages, totalPop, tileAt, BIOMES, disasterLabel,
-         type GameState, type Village } from "../sim/index";
-import balance from "../../data/balance.json";
+import { ACTION_NAME, CREATURE_NEED_NAME, GENE_NAME, NEED_NAME, SPELLS, spellCost, spellFor,
+         bodySize, maxAge, totalPop, faithCap, neediestVillage, tileAt, BIOMES, disasterLabel,
+         type GameState, type NeedId, type Village } from "../sim/index";
 
 const SIGIL: Record<string, string> = {
   rain:  '<path d="M5 10a4 4 0 018-1 3 3 0 011 5.8"/><path d="M8 17l-1 3M12 17l-1 3M16 17l-1 3"/>',
@@ -19,18 +18,15 @@ const pct = (v: number) => `${Math.round(v * 100)}%`;
 export class Hud {
   private lastLogLen = 0;
   private msgAt = 0;
-  private lastEra = -1;
   private lastAlignBucket = -99;
   private seenDisasters = new Set<string>();
 
-  constructor(private eraNames: string[], private onCast: (id: string) => void) {}
+  constructor(private onCast: (id: string) => void) {}
 
-  /** สร้างปุ่มคาถาใหม่เมื่อเลื่อนยุค (คาถาบางอย่างปลดล็อกตามยุค) */
-  buildSpells(era: number, align: number, armed: string | null) {
+  buildSpells(align: number, armed: string | null) {
     const el = $("spells");
     el.innerHTML = "";
     for (const sp of SPELLS) {
-      if (sp.minEra > era) continue;
       const b = document.createElement("button");
       b.className = "sigil" + (sp.dark ? " dark" : "");
       b.id = "sp_" + sp.id;
@@ -58,7 +54,6 @@ export class Hud {
 
   say(msg: string) { $("ticker").textContent = msg; this.msgAt = performance.now(); }
 
-  /** เรื่องใหญ่ (ภัยพิบัติ / คู่แข่งตื่น / เลื่อนยุค) ต้องเด้งให้เห็นชัด ไม่ใช่ไหลหายไปกับ ticker */
   alert(msg: string, kind: "good" | "bad" | "info" = "info") {
     const el = document.createElement("div");
     el.className = "alert " + kind;
@@ -69,23 +64,13 @@ export class Hud {
   }
 
   update(s: GameState) {
+    const cap = faithCap(s);
     $("sFaith").textContent = String(Math.floor(s.faith));
-    $("sPop").textContent = `${Math.round(loyalPop(s))}/${Math.round(totalPop(s))}`;
-    $("sEra").textContent = this.eraNames[s.era];
-    $("sSeason").textContent = `${balance.season.names[s.season]} · ปีที่ ${s.year}`;
+    $("sFaithCap").textContent = `/ ${Math.floor(cap)} ศรัทธา`;
+    $("sPop").textContent = String(Math.round(totalPop(s)));
+    $("sYear").textContent = String(s.year);
     ($("alignPin") as HTMLElement).style.left = ((s.align + 1) / 2) * 100 + "%";
 
-    const rv = $("rivalStat");
-    rv.classList.toggle("hidden", !s.rival.active);
-    if (s.rival.active) {
-      $("sRival").textContent = String(Math.floor(s.rival.faith));
-      $("sRivalName").textContent = s.rival.name;
-    }
-
-    if (s.era !== this.lastEra) {
-      if (this.lastEra >= 0) this.alert(`ผู้ศรัทธาก้าวเข้าสู่${this.eraNames[s.era]}`, "good");
-      this.lastEra = s.era;
-    }
     for (const d of s.disasters) {
       const key = `${d.kind}@${d.x},${d.y}`;
       if (!this.seenDisasters.has(key)) { this.seenDisasters.add(key); this.alert(disasterLabel(d.kind), "bad"); }
@@ -99,7 +84,6 @@ export class Hud {
     }
     if (performance.now() - this.msgAt > 5200) $("ticker").textContent = "";
 
-    // ราคาคาถาขยับตามแกนธรรม สร้างปุ่มใหม่เมื่อขยับพอสมควรเท่านั้น
     const bucket = Math.round(s.align * 10);
     if (bucket !== this.lastAlignBucket) { this.lastAlignBucket = bucket; this.refreshCosts(s); }
     for (const sp of SPELLS) {
@@ -107,48 +91,71 @@ export class Hud {
       if (b) b.disabled = s.faith < spellCost(sp, s.align);
     }
 
-    const c = petOf(s);
-    if (c) {
-      $("petFace").textContent = String(c.gen);
-      const act = c.act ? ACTION_NAME[c.act] : c.lastAct ? "เพิ่ง" + ACTION_NAME[c.lastAct] : "…";
-      const need = c.need === "content" ? "" : ` · ${NEED_NAME[c.need]}`;
-      $("petAct").textContent = c.alive
-        ? `รุ่นที่ ${c.gen} · ${act}${need}${c.cmd ? " · ทำตามคำสั่ง" : ""}`
-        : "สิ้นชีพ";
-      ($("barE") as HTMLElement).style.width = c.energy * 100 + "%";
-      ($("barA") as HTMLElement).style.width = (100 - Math.min(1, c.age / maxAge(c)) * 100) + "%";
-      ($("barB") as HTMLElement).style.width = c.bond * 100 + "%";
-      ($("bPraise") as HTMLElement).style.opacity = c.fbTimer > 0 ? "1" : "0.35";
-      ($("bScold") as HTMLElement).style.opacity = c.fbTimer > 0 ? "1" : "0.35";
-    }
+    this.drawGuide(s);
+
+    const c = s.creature;
+    $("petFace").textContent = String(c.gen);
+    const act = c.act ? ACTION_NAME[c.act] : c.lastAct ? "เพิ่ง" + ACTION_NAME[c.lastAct] : "…";
+    const need = c.need === "content" ? "" : ` · ${CREATURE_NEED_NAME[c.need]}`;
+    $("petAct").textContent = c.alive
+      ? `รุ่นที่ ${c.gen} · ${act}${need}${c.cmd ? " · ทำตามคำสั่ง" : ""}`
+      : "สิ้นชีพ · กำลังกลับชาติมาเกิด";
+    ($("barE") as HTMLElement).style.width = c.energy * 100 + "%";
+    ($("barA") as HTMLElement).style.width = (100 - Math.min(1, c.age / maxAge(c)) * 100) + "%";
+    ($("barB") as HTMLElement).style.width = c.bond * 100 + "%";
+    const canTeach = c.fbTimer > 0 && c.alive;
+    ($("bPraise") as HTMLElement).classList.toggle("ready", canTeach);
+    ($("bScold") as HTMLElement).classList.toggle("ready", canTeach);
 
     if (!$("genome").classList.contains("hidden")) this.drawGenome(s);
   }
 
+  /** แถบบอกว่า "ตอนนี้ควรทำอะไร" — สิ่งเดียวที่ขาดไปแล้วทำให้เกมเล่นไม่รู้เรื่อง */
+  private drawGuide(s: GameState) {
+    const el = $("guide");
+    const plagued = s.villages.find((v) => v.plague > 0);
+    let text = "", spellId = "";
+
+    if (plagued) {
+      text = `หมู่บ้าน${plagued.name}มีโรคระบาด`;
+      spellId = "heal";
+    } else {
+      const v = neediestVillage(s);
+      if (v && v.ask) {
+        text = `หมู่บ้าน${v.name}ขาด${NEED_NAME[v.ask]}`;
+        spellId = spellFor(v.ask)?.id ?? "";
+      }
+    }
+    if (!text) {
+      const c = s.creature;
+      if (c.alive && c.fbTimer > 0 && c.lastAct) {
+        text = `สัตว์ของท่านเพิ่ง${ACTION_NAME[c.lastAct]} — ชมหรือตีได้ตอนนี้`;
+      } else { el.classList.add("hidden"); return; }
+    }
+    const sp = SPELLS.find((x) => x.id === spellId);
+    el.classList.remove("hidden");
+    el.innerHTML = `<b>${text}</b>` +
+      (sp ? `<span>ร่าย <em>${sp.name}</em> ลงตรงนั้น · ${spellCost(sp, s.align)} ศรัทธา</span>` : "");
+  }
+
   private refreshCosts(s: GameState) {
     for (const sp of SPELLS) {
-      const b = document.getElementById("sp_" + sp.id);
-      const cst = b?.querySelector(".cst");
+      const cst = document.getElementById("sp_" + sp.id)?.querySelector(".cst");
       if (cst) cst.textContent = String(spellCost(sp, s.align));
     }
   }
 
   drawGenome(s: GameState) {
-    const c = petOf(s);
-    if (!c) return;
-    const wild = s.creatures.filter((x) => !x.pet);
-    let h = `<h3>สัตว์รุ่นที่ ${c.gen}${s.best ? ` · สถิติสูงสุด ${Math.round(s.best.fit)}` : ""}</h3>`;
-    h += `<div class="sub">ขนาดตัวจริง ${bodySize(c).toFixed(2)} · ความผูกพัน ${pct(c.bond)} · จำสถานที่ได้ ${Object.keys(c.mem).length} แห่ง</div>`;
+    const c = s.creature;
+    let h = `<h3>สัตว์รุ่นที่ ${c.gen}${s.best ? ` · สถิติชีวิตสูงสุด ${Math.round(s.best.fit)}` : ""}</h3>`;
+    h += `<div class="sub">ขนาดตัว ${bodySize(c).toFixed(2)} · ความผูกพัน ${pct(c.bond)} · จำสถานที่ได้ ${Object.keys(c.mem).length} แห่ง</div>`;
     for (const k of Object.keys(c.genes) as (keyof typeof c.genes)[]) {
       const v = c.genes[k];
-      const avg = wild.length ? wild.reduce((a, x) => a + x.genes[k], 0) / wild.length : v;
       h += `<div class="grow-row"><em>${GENE_NAME[k]}</em>
-        <div class="bar"><i style="width:${v * 100}%;background:#6aa0b5"></i>
-        <u style="left:${avg * 100}%"></u></div>
+        <div class="bar"><i style="width:${v * 100}%;background:#6aa0b5"></i></div>
         <em>${v.toFixed(2)}</em></div>`;
     }
-    h += `<div class="sub">ขีดขาวคือค่าเฉลี่ยของสัตว์ป่า ${wild.length} ตัวในโลก</div>`;
-    h += '<div style="height:8px"></div>';
+    h += '<div style="height:8px"></div><div class="sub">สิ่งที่มันชอบทำ (สอนได้ด้วย ✦ และ ✕)</div>';
     const mx = Math.max(...Object.values(c.w));
     for (const k of Object.keys(c.w) as (keyof typeof c.w)[]) {
       h += `<div class="grow-row"><em>${ACTION_NAME[k]}</em>
@@ -158,7 +165,6 @@ export class Hud {
     $("genome").innerHTML = h;
   }
 
-  /** แผงตรวจสอบช่อง: แตะแล้วเห็นว่าดินตรงนี้เป็นยังไง หมู่บ้านนี้ขาดอะไร */
   drawInspect(s: GameState, x: number, y: number) {
     const t = tileAt(s.tiles, x, y);
     const el = $("inspect");
@@ -170,23 +176,21 @@ export class Hud {
     h += `<div class="kv"><span>ความชุ่มน้ำ</span><b>${pct(t.wet)}</b></div>`;
     if (t.burn > 0.02) h += `<div class="kv bad"><span>กำลังไหม้</span><b>${pct(t.burn)}</b></div>`;
     if (t.blight > 0.02) h += `<div class="kv bad"><span>ดินเสียจากภัยแล้ง</span><b>${pct(t.blight)}</b></div>`;
-    if (t.village) h += this.villageBlock(s, t.village);
+    if (t.village) h += this.villageBlock(t.village);
     el.innerHTML = h;
   }
 
-  private villageBlock(s: GameState, v: Village) {
-    const side = v.devotion > 0.2 ? "บูชาท่าน"
-               : v.devotion < -0.2 ? `บูชา${s.rival.name}` : "ยังไม่เลือกข้าง";
+  private villageBlock(v: Village) {
     const bar = (label: string, val: number) =>
       `<div class="kv"><span>${label}</span>
         <div class="minibar"><i style="width:${val * 100}%;background:${val < 0.5 ? "#c4795a" : "#7fc08a"}"></i></div>
         <b>${pct(val)}</b></div>`;
+    const needs = (["food", "wood", "shelter"] as NeedId[])
+      .map((k) => bar(NEED_NAME[k], v.needs[k])).join("");
     return `<hr><h3>หมู่บ้าน${v.name}</h3>
       <div class="kv"><span>ผู้คน</span><b>${Math.round(v.pop)}</b></div>
-      <div class="kv"><span>ศรัทธา</span><b>${pct(v.belief)}</b></div>
-      <div class="kv"><span>ใจของพวกเขา</span><b>${side}</b></div>
-      ${bar("อาหาร", v.needs.food)}${bar("ไม้", v.needs.wood)}${bar("ที่อยู่", v.needs.shelter)}
-      ${v.plague > 0 ? '<div class="kv bad"><span>โรคระบาด</span><b>กำลังลุกลาม</b></div>' : ""}
-      <div class="sub">หมู่บ้านทั้งโลก ${s.villages.length}/${maxVillages(s)} แห่ง</div>`;
+      <div class="kv"><span>ศรัทธาในตัวท่าน</span><b>${pct(v.belief)}</b></div>
+      ${needs}
+      ${v.plague > 0 ? '<div class="kv bad"><span>โรคระบาด</span><b>กำลังลุกลาม</b></div>' : ""}`;
   }
 }

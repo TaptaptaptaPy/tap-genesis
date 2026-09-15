@@ -1,17 +1,17 @@
 import "./style.css";
 import { FixedLoop } from "./core/loop";
 import { createGame, stepTick, stepEffects, castSpell, teach, command,
-         snapshot, restore, saveLooksValid, loyalPop, totalPop,
+         snapshot, restore, saveLooksValid, totalPop,
          SPELLS, type Game, type CommandId } from "./sim/index";
-import { draw, Terrain } from "./render/draw";
-import { Minimap } from "./ui/minimap";
-import { Camera } from "./render/camera";
+import { World3D } from "./render/world3d";
+import { Terrain3D } from "./render/terrain3d";
+import { Creature3D, Villages3D } from "./render/actors3d";
+import { Fx3D } from "./render/fx3d";
 import { Hud } from "./ui/hud";
 import { clearSlot, readSlot, slotMeta, writeSlot, SLOTS, type SlotId } from "./core/storage";
 import balance from "../data/balance.json";
 
 const cv = document.getElementById("cv") as HTMLCanvasElement;
-const ctx = cv.getContext("2d")!;
 const stage = document.getElementById("stage")!;
 const { W, H } = balance.world;
 
@@ -20,38 +20,33 @@ let armed: string | null = null;
 let armedCmd: CommandId | null = null;
 let hover: { x: number; y: number } | null = null;
 let selected: { x: number; y: number } | null = null;
-let showMemory = false;
 
-const cam = new Camera();
-const terrain = new Terrain();
-const minimap = new Minimap(document.getElementById("minimap")!, cam, (x, y) => {
-  cam.cx = x; cam.cy = y; cam.clampCenter();
-});
-const hud = new Hud(balance.era.names, (id) => {
+const world = new World3D(cv);
+let terrain = new Terrain3D(game.state);
+const villages = new Villages3D();
+const creature = new Creature3D();
+const fx = new Fx3D();
+world.scene.add(terrain.group, villages.group, creature.root, fx.group);
+
+const hud = new Hud((id) => {
   armedCmd = null; hud.setCommand(null);
   armed = armed === id ? null : id;
   hud.setArmed(armed);
   const sp = SPELLS.find((s) => s.id === id)!;
-  hud.say(armed ? `${sp.name} — แตะแผนที่ (${sp.hint})` : "ยกเลิก");
+  hud.say(armed ? `${sp.name} — แตะบนเกาะเพื่อร่าย (${sp.hint})` : "ยกเลิก");
 });
 
-// ───────────────────────── ขนาดจอ ─────────────────────────
-
-function resize() {
-  const r = stage.getBoundingClientRect();
-  const dpr = Math.min(2, window.devicePixelRatio || 1);
-  cv.width = Math.max(1, Math.floor(r.width * dpr));
-  cv.height = Math.max(1, Math.floor(r.height * dpr));
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  cam.resize(r.width, r.height);
+function rebuildTerrain() {
+  world.scene.remove(terrain.group);
+  terrain = new Terrain3D(game.state);
+  world.scene.add(terrain.group);
 }
-window.addEventListener("resize", resize);
 
 // ───────────────────────── นิ้วและเมาส์ ─────────────────────────
 
 const pointers = new Map<number, { x: number; y: number }>();
-let dragStart: { x: number; y: number; cx: number; cy: number } | null = null;
 let dragged = false;
+let last = { x: 0, y: 0 };
 let pinchDist = 0;
 
 const localPos = (e: PointerEvent) => {
@@ -60,10 +55,12 @@ const localPos = (e: PointerEvent) => {
 };
 
 cv.addEventListener("pointerdown", (e) => {
-  cv.setPointerCapture(e.pointerId);
+  // บาง pointer (เช่นที่ถูกยิงจากเครื่องมืออัตโนมัติ) ทำให้ setPointerCapture โยน error
+  // ถ้าไม่ดักไว้ pointerdown จะตายกลางคันและการแตะครั้งนั้นหายไปทั้งครั้ง
+  try { cv.setPointerCapture(e.pointerId); } catch { /* ไม่จำเป็นต้องจับ pointer ก็เล่นได้ */ }
   const p = localPos(e);
   pointers.set(e.pointerId, p);
-  if (pointers.size === 1) { dragStart = { x: p.x, y: p.y, cx: cam.cx, cy: cam.cy }; dragged = false; }
+  if (pointers.size === 1) { last = p; dragged = false; }
   if (pointers.size === 2) {
     const [a, b] = [...pointers.values()];
     pinchDist = Math.hypot(a.x - b.x, a.y - b.y);
@@ -77,76 +74,55 @@ cv.addEventListener("pointermove", (e) => {
   if (pointers.size === 2) {
     const [a, b] = [...pointers.values()];
     const d = Math.hypot(a.x - b.x, a.y - b.y);
-    if (pinchDist > 0 && d > 0) {
-      cam.zoomAt((a.x + b.x) / 2, (a.y + b.y) / 2, d / pinchDist);
-      dragged = true;
-    }
+    if (pinchDist > 0 && d > 0) { world.zoomBy(pinchDist / d); dragged = true; }
     pinchDist = d;
     return;
   }
-  if (pointers.size === 1 && dragStart) {
-    const dx = p.x - dragStart.x, dy = p.y - dragStart.y;
-    if (!dragged && Math.hypot(dx, dy) > 6) dragged = true;
-    if (dragged) {
-      cam.cx = dragStart.cx - dx / cam.scale;
-      cam.cy = dragStart.cy - dy / cam.scale;
-      cam.clampCenter();
-    }
+  if (pointers.size === 1) {
+    const dx = p.x - last.x, dy = p.y - last.y;
+    if (!dragged && Math.hypot(p.x - last.x, p.y - last.y) > 5) dragged = true;
+    if (dragged) world.orbitBy(dx, dy);
+    last = p;
   }
-  const w = cam.toWorld(p.x, p.y);
-  const tx = Math.floor(w.x), ty = Math.floor(w.y);
-  hover = tx >= 0 && ty >= 0 && tx < W && ty < H ? { x: tx, y: ty } : null;
+  hover = world.pick(p.x, p.y, [terrain.ground]);
 });
 
-function endPointer(e: PointerEvent) {
+cv.addEventListener("pointerup", (e) => {
   const wasSingle = pointers.size === 1;
   const p = localPos(e);
   pointers.delete(e.pointerId);
   if (pointers.size < 2) pinchDist = 0;
-  if (!wasSingle || dragged) { dragStart = null; return; }
-  dragStart = null;
+  if (!wasSingle || dragged) return;
   onTap(p.x, p.y);
-}
-cv.addEventListener("pointerup", endPointer);
-cv.addEventListener("pointercancel", (e) => { pointers.delete(e.pointerId); dragStart = null; });
+});
+cv.addEventListener("pointercancel", (e) => pointers.delete(e.pointerId));
 cv.addEventListener("pointerleave", () => (hover = null));
-
 cv.addEventListener("wheel", (e) => {
   e.preventDefault();
-  const r = cv.getBoundingClientRect();
-  cam.zoomAt(e.clientX - r.left, e.clientY - r.top, e.deltaY < 0 ? 1.12 : 1 / 1.12);
+  world.zoomBy(e.deltaY > 0 ? 1.1 : 1 / 1.1);
 }, { passive: false });
 
-let lastTapAt = 0, lastTapX = 0, lastTapY = 0;
-
 function onTap(sx: number, sy: number) {
-  const now = performance.now();
-  if (now - lastTapAt < 320 && Math.hypot(sx - lastTapX, sy - lastTapY) < 28 && !armed && !armedCmd) {
-    lastTapAt = 0;
-    cam.zoomAt(sx, sy, cam.scale > cam.minScale * 2.2 ? 1 / 2.2 : 2.2);
-    return;
-  }
-  lastTapAt = now; lastTapX = sx; lastTapY = sy;
-  tapAction(sx, sy);
-}
-
-function tapAction(sx: number, sy: number) {
-  const w = cam.toWorld(sx, sy);
-  const x = Math.floor(w.x), y = Math.floor(w.y);
-  if (x < 0 || y < 0 || x >= W || y >= H) return;
+  const hit = world.pick(sx, sy, [terrain.ground]);
+  if (!hit) return;
   const s = game.state;
   const log = (m: string) => hud.say(m);
 
-  if (armed) { castSpell(s, armed, x, y, game.rng, log); return; }
+  if (armed) {
+    const before = s.terrainVersion;
+    castSpell(s, armed, hit.x, hit.y, game.rng, log);
+    if (s.terrainVersion !== before) rebuildTerrain();
+    return;
+  }
   if (armedCmd) {
-    command(s, armedCmd, x, y);
+    command(s, armedCmd, hit.x, hit.y);
     hud.say(armedCmd === "stay" ? "สั่งให้อยู่ตรงนั้น"
           : armedCmd === "eatHere" ? "สั่งให้ไปหากินตรงนั้น" : "เรียกให้ไปตรงนั้น");
     armedCmd = null; hud.setCommand(null);
     return;
   }
-  selected = { x, y };
-  hud.drawInspect(s, x, y);
+  selected = hit;
+  hud.drawInspect(s, hit.x, hit.y);
 }
 
 // ───────────────────────── ปุ่ม ─────────────────────────
@@ -158,7 +134,7 @@ function armCommand(kind: CommandId) {
   armed = null; hud.setArmed(null);
   armedCmd = armedCmd === kind ? null : kind;
   hud.setCommand(armedCmd);
-  hud.say(armedCmd ? "แตะแผนที่เพื่อบอกว่าตรงไหน" : "ยกเลิก");
+  hud.say(armedCmd ? "แตะบนเกาะเพื่อบอกว่าตรงไหน" : "ยกเลิก");
 }
 document.getElementById("cStay")!.onclick = () => armCommand("stay");
 document.getElementById("cEat")!.onclick = () => armCommand("eatHere");
@@ -170,11 +146,6 @@ document.getElementById("bGen")!.onclick = () => {
   document.getElementById("genome")!.classList.toggle("hidden");
   hud.drawGenome(game.state);
 };
-document.getElementById("bMem")!.onclick = () => {
-  showMemory = !showMemory;
-  hud.say(showMemory ? "แสดงแผนที่ความจำของสัตว์ — เขียวคือที่ที่มันจำว่าดี" : "ปิดแผนที่ความจำ");
-};
-document.getElementById("bFit")!.onclick = () => cam.fitAll();
 document.getElementById("bMenu")!.onclick = () => toggleMenu();
 
 const bSpeed = document.getElementById("bSpeed") as HTMLButtonElement;
@@ -187,8 +158,6 @@ document.addEventListener("keydown", (e) => {
   if (e.key === "p") loop.paused = !loop.paused;
   if (e.key === "a") teach(game.state, 1, game.rng, (m) => hud.say(m));
   if (e.key === "z") teach(game.state, -1, game.rng, (m) => hud.say(m));
-  if (e.key === "f") cam.fitAll();
-  if (e.key === "m") document.getElementById("bMem")!.dispatchEvent(new Event("click"));
   if (e.key === "Escape") {
     armed = null; armedCmd = null; hud.setArmed(null); hud.setCommand(null);
     for (const id of ["genome", "inspect", "menu"]) document.getElementById(id)!.classList.add("hidden");
@@ -198,27 +167,25 @@ document.addEventListener("keydown", (e) => {
 
 // ───────────────────────── เซฟ / โหลด ─────────────────────────
 
-function metaOf() {
-  const s = game.state;
-  return { at: Date.now(), year: s.year, era: balance.era.names[s.era],
-           villages: s.villages.length, pop: Math.round(totalPop(s)) };
-}
+const metaOf = () => ({
+  at: Date.now(), year: game.state.year, era: "",
+  villages: game.state.villages.length, pop: Math.round(totalPop(game.state)),
+});
 
 function saveTo(slot: SlotId, quiet = false) {
   const ok = writeSlot(slot, snapshot(game), metaOf());
-  if (!quiet) hud.say(ok ? `บันทึกลงช่อง ${slot === "auto" ? "อัตโนมัติ" : slot} แล้ว` : "บันทึกไม่สำเร็จ (พื้นที่เก็บเต็ม?)");
-  return ok;
+  if (!quiet) hud.say(ok ? "บันทึกแล้ว" : "บันทึกไม่สำเร็จ (พื้นที่เก็บเต็ม?)");
 }
 
 function loadFrom(slot: SlotId) {
   const r = readSlot(slot);
-  if (!r || !saveLooksValid(r.state, W * H)) { hud.say("ช่องนี้ว่าง หรือเซฟมาจากโครงเกมคนละรุ่น"); return; }
+  if (!r || !saveLooksValid(r.state, W * H)) { hud.say("ช่องนี้ว่าง หรือเซฟมาจากเกมคนละรุ่น"); return; }
   game = restore(r.state);
   armed = null; armedCmd = null; selected = null;
   hud.setArmed(null); hud.setCommand(null);
-  hud.buildSpells(game.state.era, game.state.align, null);
-  cam.fitAll();
-  hud.say(`โหลดโลกจากช่อง ${slot === "auto" ? "อัตโนมัติ" : slot} แล้ว`);
+  hud.buildSpells(game.state.align, null);
+  rebuildTerrain();
+  hud.say("โหลดโลกแล้ว");
   toggleMenu(false);
 }
 
@@ -234,8 +201,7 @@ function toggleMenu(force?: boolean) {
   for (const slot of SLOTS) {
     const m = slotMeta(slot);
     const name = slot === "auto" ? "อัตโนมัติ" : `ช่อง ${slot}`;
-    const desc = m ? `ปีที่ ${m.year} · ${m.era} · ${m.villages} หมู่บ้าน · ${m.pop} คน`
-                   : "ว่าง";
+    const desc = m ? `ปีที่ ${m.year} · ${m.villages} หมู่บ้าน · ${m.pop} คน` : "ว่าง";
     h += `<div class="slot">
       <div class="slotinfo"><b>${name}</b><small>${desc}</small></div>
       <button data-save="${slot}">บันทึก</button>
@@ -255,15 +221,13 @@ function toggleMenu(force?: boolean) {
   el.querySelectorAll<HTMLButtonElement>("[data-wipe]").forEach((b) =>
     (b.onclick = () => { clearSlot(b.dataset.wipe as SlotId); toggleMenu(true); }));
   el.querySelector<HTMLButtonElement>("[data-new]")!.onclick = () => {
-    if (confirm("เริ่มโลกใหม่ทั้งหมด? โลกปัจจุบันที่ยังไม่บันทึกจะหายไป")) { newGame(); toggleMenu(false); }
+    if (confirm("เริ่มโลกใหม่ทั้งหมด?")) { newGame(); toggleMenu(false); }
   };
 }
 
 // ───────────────────────── ลูปหลัก ─────────────────────────
 
-let lastEra = -1;
 let lastAutosave = 0;
-
 const loop = new FixedLoop(
   balance.time.tickSeconds,
   () => {
@@ -275,53 +239,68 @@ const loop = new FixedLoop(
     const s = game.state;
     stepEffects(s, dt);
     const r = stage.getBoundingClientRect();
-    if (Math.abs(r.width - cam.w) > 1 || Math.abs(r.height - cam.h) > 1) resize();
-    if (s.era !== lastEra) { lastEra = s.era; hud.buildSpells(s.era, s.align, armed); }
+    if (Math.abs(r.width - world.width) > 1 || Math.abs(r.height - world.height) > 1) world.resize();
+
+    world.shake = Math.max(world.shake, s.shake);
+    terrain.update(s, now);
+    villages.update(s, now);
+    creature.update(s, s.creature, now);
     const sp = armed ? SPELLS.find((x) => x.id === armed)! : null;
-    draw(ctx, s, cam, terrain, now, {
-      hover, armedRadius: sp ? sp.radius : null, armedDark: sp?.dark ?? false,
-      selected, showMemory,
-    });
+    fx.setCursor(s, hover ?? selected, sp ? sp.radius : null, sp?.dark ?? false);
+    fx.update(s, now);
+
+    world.update(dt);
+    world.render();
     hud.update(s);
-    minimap.draw(s);
     if (selected && !document.getElementById("inspect")!.classList.contains("hidden")
         && s.tick % 8 === 0) hud.drawInspect(s, selected.x, selected.y);
   },
 );
 
-/** ครั้งแรกที่เปิดเกม บอกสามอย่างที่ผู้เล่นต้องรู้ แล้วไม่กวนอีก */
 function showFirstHint() {
   const el = document.getElementById("firsthint")!;
-  if (localStorage.getItem("genesis:seenHint") === "1") return;
+  if (localStorage.getItem("genesis:seenHint3d") === "1") return;
   el.classList.remove("hidden");
-  el.innerHTML = `<b>ยินดีต้อนรับสู่โลกของท่าน</b><br>
-    ลากเพื่อเลื่อนแผนที่ · หนีบสองนิ้วหรือแตะสองครั้งเพื่อซูม<br>
-    แตะพื้นดินเพื่อดูว่าดินตรงนั้นเป็นอย่างไร<br>
-    เลือกคาถาแล้วแตะแผนที่เพื่อร่าย · ชม ✦ หรือตี ✕ สัตว์ได้ทันทีหลังมันทำอะไรสักอย่าง
-    <button id="hintOk">เข้าใจแล้ว</button>`;
+  el.innerHTML = `<b>ท่านคือเทพเจ้าของเกาะนี้</b>
+    <ol>
+      <li>ผู้คนจะบอกเองว่าขาดอะไร — ดูป้ายลอยเหนือหมู่บ้าน กับแถบคำแนะนำกลางจอ</li>
+      <li>เลือกปาฏิหาริย์ด้านล่าง แล้วแตะลงบนเกาะตรงจุดที่ต้องการ</li>
+      <li>ยิ่งดูแลคนได้ดี ศรัทธายิ่งไหลเข้ามา และร่ายคาถาใหญ่ได้มากขึ้น</li>
+      <li>สัตว์ของท่านเรียนจากท่าน — กด ✦ หรือ ✕ ทันทีหลังมันทำอะไรสักอย่าง</li>
+    </ol>
+    <div class="sub">ลากเพื่อหมุนกล้อง · หนีบสองนิ้วหรือใช้ล้อเมาส์เพื่อซูม</div>
+    <button id="hintOk">เริ่มเลย</button>`;
   document.getElementById("hintOk")!.onclick = () => {
     el.classList.add("hidden");
-    try { localStorage.setItem("genesis:seenHint", "1"); } catch { /* ไม่เป็นไร */ }
+    try { localStorage.setItem("genesis:seenHint3d", "1"); } catch { /* ไม่เป็นไร */ }
   };
 }
 
 function newGame() {
   game = createGame(Date.now() & 0xffffff);
-  armed = null; armedCmd = null; selected = null; lastEra = -1; lastAutosave = 0;
-  resize();
-  cam.fitAll();
-  hud.say("โลกใหม่ถือกำเนิด");
+  armed = null; armedCmd = null; selected = null; lastAutosave = 0;
+  rebuildTerrain();
+  world.resize();
+  hud.buildSpells(game.state.align, null);
+  hud.say("เกาะใหม่ผุดขึ้นจากทะเล");
   showFirstHint();
 }
 
-// เปิดเกมมาแล้วมีโลกค้างอยู่ ก็เล่นต่อจากเดิม ไม่ใช่เริ่มใหม่ทุกครั้ง
 const auto = readSlot("auto");
 if (auto && saveLooksValid(auto.state, W * H)) {
   game = restore(auto.state);
-  resize(); cam.fitAll();
-  hud.buildSpells(game.state.era, game.state.align, null);
-  hud.say(`เล่นต่อจากปีที่ ${game.state.year} · ผู้ศรัทธา ${Math.round(loyalPop(game.state))} คน`);
+  rebuildTerrain();
+  world.resize();
+  hud.buildSpells(game.state.align, null);
+  hud.say(`เล่นต่อจากปีที่ ${game.state.year}`);
 } else {
   newGame();
 }
+window.addEventListener("resize", () => world.resize());
+
+// เปิดทางให้ตรวจสอบฉากจาก console ตอนพัฒนา — ชั้น 3 มิติดีบั๊กยากถ้ามองจากข้างนอกไม่ได้
+if (import.meta.env.DEV)
+  (window as unknown as Record<string, unknown>).__genesis =
+    { get game() { return game; }, world, villages, creature, terrain: () => terrain,
+      state: () => ({ pointers: pointers.size, dragged, armed }) };
 loop.start();

@@ -15,9 +15,9 @@ function landTiles(s: GameState): Tile[] {
   return s.tiles.filter((t) => !isWater(t.biome));
 }
 
-function weightedKind(s: GameState, rng: Rng): DisasterId {
+function weightedKind(_s: GameState, rng: Rng): DisasterId {
   const kinds: DisasterId[] = ["drought", "wildfire", "plague", "flood"];
-  const w = kinds.map((k) => D[k].weightBySeason[s.season]);
+  const w = kinds.map((k) => (D.weights as Record<string, number>)[k]);
   const sum = w.reduce((a, b) => a + b, 0);
   let r = rng() * sum;
   for (let i = 0; i < kinds.length; i++) { r -= w[i]; if (r <= 0) return kinds[i]; }
@@ -44,7 +44,7 @@ export function maybeStartDisaster(s: GameState, rng: Rng, log: (m: string) => v
   if (s.tick < D.graceTicks) return;   // ปล่อยให้อารยธรรมตั้งไข่ให้รอดก่อน
   if (s.tick % D.checkEveryTicks !== 0) return;
   if (s.tick - s.lastDisasterTick < D.minTicksBetween) return;
-  if (rng() > D.baseChance + s.era * D.chancePerEra) return;
+  if (rng() > D.baseChance) return;
 
   const kind = weightedKind(s, rng);
   const spot = pickSpot(s, rng, kind !== "wildfire");

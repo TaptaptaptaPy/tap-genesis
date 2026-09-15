@@ -10,12 +10,13 @@ export interface Tile {
   wet: number;    // ความชุ่มน้ำ (ฝนเพิ่ม แล้วค่อยๆ แห้ง)
   burn: number;
   blight: number; // ผลค้างจากภัยแล้ง กดเพดานความอุดมชั่วคราว
-  shade: number;  // ความต่างสีเล็กน้อย กันภาพแบนราบ
+  shade: number;  // ความต่างเล็กน้อย กันภาพแบนราบ
   village: Village | null;
 }
 
 /** ความต้องการของหมู่บ้าน 0..1 = เติมเต็มแค่ไหน ศรัทธาคำนวณจากสามค่านี้ */
 export interface Needs { food: number; wood: number; shelter: number; }
+export type NeedId = keyof Needs;
 
 export interface Village {
   id: number;
@@ -24,12 +25,14 @@ export interface Village {
   belief: number;
   name: string;
   age: number;
-  wood: number;      // ไม้ในคลัง
-  shelter: number;   // ที่อยู่อาศัยที่สร้างไว้แล้ว
+  wood: number;
+  shelter: number;
   needs: Needs;
   awe: number;       // ความทรงจำถึงปาฏิหาริย์ล่าสุด ค่อยๆ จาง
-  devotion: number;  // -1 ศรัทธาเทพคู่แข่ง .. +1 ศรัทธาผู้เล่น
   plague: number;    // ticks ที่เหลือของโรคระบาด
+  /** สิ่งที่หมู่บ้านกำลังร้องขอ — ตัวที่ทำให้ผู้เล่นรู้ว่าตอนนี้ควรทำอะไร */
+  ask: NeedId | null;
+  askCd: number;
 }
 
 export type ActionId = "forage" | "raid" | "help" | "worship" | "wander";
@@ -37,13 +40,12 @@ export type GeneId = "size" | "speed" | "meta" | "aggr" | "intel" | "coat";
 export type Genes = Record<GeneId, number>;
 export type Weights = Record<ActionId, number>;
 
-export type CommandId = "stay" | "eatHere" | "follow" | "goTo";
+export type CommandId = "stay" | "eatHere" | "goTo";
 export interface Command { kind: CommandId; x: number; y: number; ticks: number; }
 
-export type NeedId = "hungry" | "tired" | "bored" | "hurt" | "content";
+export type CreatureNeed = "hungry" | "tired" | "bored" | "content";
 
 export interface Creature {
-  id: number;
   x: number; y: number;
   gen: number;
   genes: Genes;
@@ -55,30 +57,27 @@ export interface Creature {
   act: ActionId | null;
   tgt: { x: number; y: number } | null;
   lastAct: ActionId | null;
-  lastTile: number;  // index ช่องที่ทำ lastAct — ใช้ผูกคำชม/คำด่าเข้ากับสถานที่
+  lastTile: number;
   fbTimer: number;   // หน้าต่างเวลาที่พระเจ้ายังสอนได้ (tick)
   eaten: number;
   served: number;
   alive: boolean;
   mood: number;
   blink: number;
-  respawnIn: number; // นับถอยหลังก่อนรุ่นถัดไปเกิด (เฉพาะสัตว์ของผู้เล่น)
-  /** สัตว์ของผู้เล่นเท่านั้นที่สอนได้และสั่งได้ */
-  pet: boolean;
-  owner: "player" | "rival" | "wild";
-  sex: 0 | 1;
-  bond: number;       // ความผูกพันกับเจ้าของ 0..1
-  grow: number;       // ขนาดที่โตขึ้นจากการกิน สะสมแยกจากยีน
-  breedCd: number;
+  respawnIn: number;
+  bond: number;      // ความผูกพันกับผู้เล่น 0..1
+  grow: number;      // ขนาดที่โตขึ้นจากการกิน
   cmd: Command | null;
-  need: NeedId;
+  need: CreatureNeed;
   idleTicks: number;
+  facing: number;    // ทิศที่หันหน้า (เรเดียน) ใช้ตอนวาด 3 มิติ
 }
 
 export interface BestRecord { genes: Genes; w: Weights; fit: number; }
 
+export type FxKind = "rain" | "spark" | "dust" | "bolt" | "ripple" | "heal";
 export interface Effect {
-  kind: "rain" | "spark" | "dust" | "bolt" | "ripple";
+  kind: FxKind;
   x: number; y: number; t: number; life: number; color?: string;
 }
 
@@ -91,38 +90,24 @@ export interface Disaster {
   name: string;
 }
 
-export interface RivalState {
-  name: string;
-  faith: number;
-  align: number;
-  active: boolean;
-  thinkCd: number;
-}
-
 export interface GameState {
   tiles: Tile[];
   villages: Village[];
-  creatures: Creature[];
-  petId: number;
-  nextId: number;
+  creature: Creature;
   best: BestRecord | null;
   faith: number;
   align: number;   // -1 อธรรม .. +1 ธรรม
-  know: number;
-  era: number;
   tick: number;
   year: number;
-  season: number;
   dead: boolean;
   fx: Effect[];
   log: string[];
   shake: number;
   disasters: Disaster[];
   lastDisasterTick: number;
-  rival: RivalState;
   landCount: number;
   seed: number;
   rngState: number;
-  /** เพิ่มขึ้นทุกครั้งที่ภูมิประเทศเปลี่ยนจนต้องวาดพื้นดินใหม่ */
+  /** เพิ่มขึ้นทุกครั้งที่ภูมิประเทศเปลี่ยนจนต้องสร้าง mesh ใหม่ */
   terrainVersion: number;
 }

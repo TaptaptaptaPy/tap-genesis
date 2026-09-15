@@ -88,10 +88,9 @@ export function setBiome(s: GameState, t: Tile, b: BiomeId) {
   s.terrainVersion++;
 }
 
-/** ฝนธรรมชาติตามฤดู — โลกไม่ได้รอผู้เล่นอย่างเดียว */
+/** ฝนธรรมชาติประปราย — โลกไม่ได้รอผู้เล่นอย่างเดียว */
 export function naturalWeather(s: GameState, rng: Rng): void {
-  const chance = balance.season.rainChance[s.season];
-  if (chance <= 0 || rng() > chance) return;
+  if (rng() > 0.016) return;
   const { W, H } = balance.world;
   const cx = Math.floor(rng() * W), cy = Math.floor(rng() * H);
   const r = 2 + Math.floor(rng() * 3);
@@ -105,9 +104,9 @@ export function naturalWeather(s: GameState, rng: Rng): void {
 }
 
 export function stepLand(s: GameState): void {
-  const L = balance.land, S = balance.season;
-  const regen = L.regen * S.regenMult[s.season];
-  const wetDecay = L.wetDecay * S.wetDecayMult[s.season];
+  const L = balance.land;
+  const regen = L.regen;
+  const wetDecay = L.wetDecay;
   for (const t of s.tiles) {
     if (t.wet > 0) t.wet = Math.max(0, t.wet - wetDecay);
     if (t.burn > 0) t.burn = Math.max(0, t.burn - L.burnDecay);

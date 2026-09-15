@@ -17,21 +17,18 @@
 <body>
 <div id="app">
   <div id="hud">
-    <div class="stat faith"><b id="sFaith">0</b><span>ศรัทธา</span></div>
+    <div class="stat faith"><b id="sFaith">0</b><span id="sFaithCap">/0</span></div>
     <div class="stat"><b id="sPop">0</b><span>ผู้ศรัทธา</span></div>
-    <div class="stat"><b id="sEra">เผ่าแรก</b><span id="sSeason">ฤดูผลิ</span></div>
-    <div class="stat rival hidden" id="rivalStat"><b id="sRival">0</b><span id="sRivalName">คู่แข่ง</span></div>
+    <div class="stat"><b id="sYear">0</b><span>ปี</span></div>
     <div class="grow"></div>
     <button class="iconbtn" id="bSpeed">1×</button>
-    <button class="iconbtn" id="bFit" title="ดูทั้งแผนที่">⤢</button>
-    <button class="iconbtn" id="bMem" title="แผนที่ความจำของสัตว์">ความจำ</button>
-    <button class="iconbtn" id="bGen">จีโนม</button>
+    <button class="iconbtn" id="bGen">สัตว์</button>
     <button class="iconbtn" id="bMenu">เมนู</button>
   </div>
   <div id="align"><div id="alignPin"></div></div>
   <div id="stage">
     <canvas id="cv"></canvas>
-    <div id="minimap"></div>
+    <div id="guide" class="hidden"></div>
     <div id="ticker"></div>
     <div id="genome" class="hidden"></div>
     <div id="inspect" class="hidden"></div>
