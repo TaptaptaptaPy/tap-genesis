@@ -1,0 +1,46 @@
+# build แล้วส่งขึ้น GitHub Pages ทุกครั้งที่ push เข้า main
+#
+# เกมเป็นไฟล์นิ่งล้วน ไม่มีเซิร์ฟเวอร์ จึงวางบน Pages ได้ตรงๆ
+# `base: "./"` ใน vite.config ทำให้เส้นทางทุกอย่างอิงตำแหน่งของหน้าเว็บเอง
+# ซึ่งจำเป็นเพราะ Pages วางไซต์ไว้ใต้ /<ชื่อ repo>/ ไม่ใช่ที่รากของโดเมน
+name: pages
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      # tsc ต้องผ่านก่อนถึงจะ deploy — ไม่ส่งของที่คอมไพล์ไม่ผ่านขึ้นไป
+      - run: npm run build
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@v4
