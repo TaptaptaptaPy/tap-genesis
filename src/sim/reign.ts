@@ -24,7 +24,7 @@ export const goalProgress = (s: GameState) => Math.min(1, totalPop(s) / G.believ
 
 /** ถึงเวลาจบหรือยัง — ต้องทั้งมีคนพอและอยู่มานานพอ กันจบตั้งแต่โลกยังไม่ทันตั้งตัว */
 export const reachedGoal = (s: GameState) =>
-  totalPop(s) >= G.believers && s.year >= G.minYears;
+  totalPop(s) >= G.believers && s.day >= G.minDays;
 
 export function computeReign(s: GameState): Reign {
   const pop = Math.round(totalPop(s));
@@ -44,7 +44,7 @@ export function computeReign(s: GameState): Reign {
     : "ผู้คนรู้ว่าท่านมีอยู่ และไม่แน่ใจว่าควรรู้สึกอย่างไร";
 
   const lines: string[] = [];
-  lines.push(`ผ่านไป ${s.year} ปี บนเกาะมีผู้ศรัทธา ${pop} คน ใน ${s.villages.length} หมู่บ้าน`);
+  lines.push(`ผ่านไป ${s.day} วัน บนเกาะมีผู้ศรัทธา ${pop} คน ใน ${s.villages.length} หมู่บ้าน`);
   if (s.creature.gen > 1)
     lines.push(`สัตว์ของท่านสืบมาถึงรุ่นที่ ${s.creature.gen} จำสิ่งที่ท่านสอนไว้ได้ครึ่งหนึ่งทุกครั้งที่เกิดใหม่`);
   if (s.creature.bond > 0.6) lines.push("มันไม่เคยห่างจากท่านเลยตลอดชีวิตของมัน");
@@ -53,7 +53,7 @@ export function computeReign(s: GameState): Reign {
   if (a < -0.6) lines.push("แผ่นดินยังจำรอยแยกที่ท่านทิ้งไว้ได้ทุกรอย");
 
   // คะแนนไว้เทียบรอบต่อรอบ ไม่ใช่ตัวตัดสินว่าเล่นถูกหรือผิด
-  const score = Math.round(pop + s.year * 4 + s.villages.length * 12 + s.creature.bond * 40);
-  return { title, tone, score, years: s.year, believers: pop,
+  const score = Math.round(pop + s.day * 4 + s.villages.length * 12 + s.creature.bond * 40);
+  return { title, tone, score, years: s.day, believers: pop,
            villages: s.villages.length, generation: s.creature.gen, lines };
 }

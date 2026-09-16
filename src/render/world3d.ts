@@ -266,6 +266,36 @@ export class World3D {
     this.renderer.toneMappingExposure =
       (0.96 + 0.14 * d) * (1 - Math.max(0, -this.alignShown) * 0.14);
   }
+  /** เลื่อนแผนที่แบบจับพื้นดินลาก — นิ้วอยู่ตรงไหน พื้นดินตรงนั้นต้องตามไปด้วย
+   *
+   *  นี่คือการควบคุมหลักของ Black & White และเป็นสิ่งที่เกมนี้ไม่มีมาตลอด
+   *  ของเดิมมีแค่หมุนรอบจุดกลางที่ตายตัว แปลว่าผู้เล่นไปดูมุมอื่นของเกาะไม่ได้เลย
+   *
+   *  ทิศทางอิงกล้อง ไม่ใช่อิงแกนโลก — ลากขึ้น = แผนที่เลื่อนเข้าหาตัวเสมอ
+   *  ไม่ว่ากล้องจะหันไปทางไหนอยู่ · และคูณด้วยระยะกล้อง เพราะซูมออกแล้วหนึ่งพิกเซล
+   *  ควรกินระยะบนพื้นมากกว่าตอนซูมเข้า ไม่งั้นตอนซูมออกจะรู้สึกว่าลากไม่ไปไหน
+   */
+  panBy(dxPx: number, dyPx: number) {
+    const k = this.distance * 0.0022;
+    const cos = Math.cos(this.azimuth), sin = Math.sin(this.azimuth);
+    // แกนขวาของกล้องบนระนาบพื้น และแกน "เข้าหาจอ"
+    this.targetCenter.x += (dxPx * sin - dyPx * cos) * k;
+    this.targetCenter.z += (-dxPx * cos - dyPx * sin) * k;
+    this.clampCenter();
+  }
+
+  /** กันไม่ให้เลื่อนออกไปจนเกาะหลุดจอ — ปล่อยให้ออกนอกขอบได้นิดหน่อยเพื่อดูชายฝั่ง */
+  private clampCenter() {
+    const m = 6;
+    this.targetCenter.x = THREE.MathUtils.clamp(this.targetCenter.x, -m, W + m);
+    this.targetCenter.z = THREE.MathUtils.clamp(this.targetCenter.z, -m, H + m);
+  }
+
+  /** กลับไปมองกลางเกาะ */
+  recentre() {
+    this.targetCenter.set(W / 2, 0, H / 2);
+  }
+
   orbitBy(dx: number, dy: number) {
     this.azimuth -= dx * 0.006;
     this.elevation = THREE.MathUtils.clamp(this.elevation - dy * 0.005, 0.28, 1.4);

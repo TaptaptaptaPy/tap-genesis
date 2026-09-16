@@ -62,6 +62,8 @@ const pointers = new Map<number, { x: number; y: number }>();
 let dragged = false;
 let last = { x: 0, y: 0 };
 let pinchDist = 0;
+/** จุดกึ่งกลางของสองนิ้วรอบที่แล้ว — ใช้หมุนกล้องด้วยสองนิ้ว */
+let twoMid: { x: number; y: number } | null = null;
 
 const localPos = (e: PointerEvent) => {
   const r = cv.getBoundingClientRect();
@@ -114,6 +116,10 @@ cv.addEventListener("pointermove", (e) => {
     const [a, b] = [...pointers.values()];
     const d = Math.hypot(a.x - b.x, a.y - b.y);
     if (pinchDist > 0 && d > 0) { world.zoomBy(pinchDist / d); dragged = true; }
+    // สองนิ้ว = หนีบซูม *และ* หมุน — เพราะนิ้วเดียวถูกใช้ไปกับการเลื่อนแผนที่แล้ว
+    const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+    if (twoMid) { world.orbitBy(mid.x - twoMid.x, mid.y - twoMid.y); dragged = true; }
+    twoMid = mid;
     pinchDist = d;
     return;
   }
@@ -133,7 +139,15 @@ cv.addEventListener("pointermove", (e) => {
           strokeDown = 0;
         } else if (stroke(game.state, game.rng, log)) sfx.stroke();
       }
-    } else if (dragged) world.orbitBy(dx, dy);
+    } else if (dragged) {
+      // นิ้วเดียวลากบนพื้น = **เลื่อนแผนที่** ไม่ใช่หมุนกล้อง
+      //
+      // นี่คือการควบคุมของ Black & White: กดค้างบนพื้นดินแล้วลาก แผ่นดินตามมือไป
+      // ของเดิมนิ้วเดียวลาก = หมุนรอบจุดกลางที่ตายตัว แปลว่าไปดูมุมอื่นของเกาะไม่ได้เลย
+      // การหมุนย้ายไปอยู่ที่สองนิ้ว (iPad) และปุ่มขวา/Shift (แมค)
+      if (e.buttons === 2 || e.shiftKey) world.orbitBy(dx, dy);
+      else world.panBy(dx, dy);
+    }
     last = p;
   }
   hover = world.pick(p.x, p.y, [terrain.ground]);
@@ -150,7 +164,7 @@ cv.addEventListener("pointerup", (e) => {
   strokeOnCreature = false;
   const p = localPos(e);
   pointers.delete(e.pointerId);
-  if (pointers.size < 2) pinchDist = 0;
+  if (pointers.size < 2) { pinchDist = 0; twoMid = null; }
   if (!wasSingle || dragged) return;
   // แตะตัวมันเฉยๆ ก็คือการลูบหนึ่งครั้ง
   if (wasStroking) { if (stroke(game.state, game.rng, (m) => hud.say(m))) sfx.stroke(); return; }
@@ -301,7 +315,9 @@ document.getElementById("bMenu")!.onclick = () => toggleMenu();
 
 const bSpeed = document.getElementById("bSpeed") as HTMLButtonElement;
 bSpeed.onclick = () => {
-  loop.speed = loop.speed === 1 ? 2 : loop.speed === 2 ? 4 : 1;
+  // สี่ระดับ ไม่ใช่สาม — หนึ่งวันบนเกาะยาว 6 นาทีจริงที่ 1x
+  // ผู้เล่นต้องข้ามช่วงที่ไม่มีอะไรเกิดขึ้นได้ ไม่งั้นจะรู้สึกว่าเกมอืด
+  loop.speed = loop.speed === 1 ? 2 : loop.speed === 2 ? 4 : loop.speed === 4 ? 8 : 1;
   bSpeed.textContent = loop.speed + "×";
 };
 
@@ -319,7 +335,7 @@ document.addEventListener("keydown", (e) => {
 // ───────────────────────── เซฟ / โหลด ─────────────────────────
 
 const metaOf = () => ({
-  at: Date.now(), year: game.state.year, era: "",
+  at: Date.now(), year: game.state.day, era: "",
   villages: game.state.villages.length, pop: Math.round(totalPop(game.state)),
 });
 
@@ -352,7 +368,7 @@ function toggleMenu(force?: boolean) {
   for (const slot of SLOTS) {
     const m = slotMeta(slot);
     const name = slot === "auto" ? "อัตโนมัติ" : `ช่อง ${slot}`;
-    const desc = m ? `ปีที่ ${m.year} · ${m.villages} หมู่บ้าน · ${m.pop} คน` : "ว่าง";
+    const desc = m ? `วันที่ ${m.year} · ${m.villages} หมู่บ้าน · ${m.pop} คน` : "ว่าง";
     h += `<div class="slot">
       <div class="slotinfo"><b>${name}</b><small>${desc}</small></div>
       <button data-save="${slot}">บันทึก</button>
@@ -360,6 +376,10 @@ function toggleMenu(force?: boolean) {
       <button data-wipe="${slot}" class="danger" ${m ? "" : "disabled"}>ลบ</button>
     </div>`;
   }
+  h += `<hr><div class="slot"><div class="slotinfo"><b>วิธีเล่น</b><small>ท่าทั้งหมดและเป้าหมายของเกม</small></div>
+        <button data-how="1">เปิด</button></div>`;
+  h += `<div class="slot"><div class="slotinfo"><b>กลับไปมองกลางเกาะ</b><small>เผื่อเลื่อนกล้องจนหลง</small></div>
+        <button data-home="1">กลับ</button></div>`;
   h += `<hr><div class="slot"><div class="slotinfo"><b>โลกใหม่</b><small>เริ่มต้นใหม่ทั้งหมด</small></div>
         <button data-new="1" class="danger">สร้างโลกใหม่</button></div>`;
   h += `<div class="sub">เกมบันทึกลงช่องอัตโนมัติให้เองทุกๆ ไม่กี่นาที</div>`;
@@ -373,6 +393,12 @@ function toggleMenu(force?: boolean) {
     (b.onclick = () => { clearSlot(b.dataset.wipe as SlotId); toggleMenu(true); }));
   el.querySelector<HTMLButtonElement>("[data-new]")!.onclick = () => {
     if (confirm("เริ่มโลกใหม่ทั้งหมด?")) { newGame(); toggleMenu(false); }
+  };
+  el.querySelector<HTMLButtonElement>("[data-how]")!.onclick = () => {
+    toggleMenu(false); showFirstHint(true);
+  };
+  el.querySelector<HTMLButtonElement>("[data-home]")!.onclick = () => {
+    world.recentre(); toggleMenu(false);
   };
 }
 
@@ -524,12 +550,22 @@ function showReign() {
   document.getElementById("reignOk")!.onclick = () => el.classList.add("hidden");
 }
 
-function showFirstHint() {
+/** ขึ้นเลขนี้ทุกครั้งที่แก้เนื้อหาหน้าสอนเล่น */
+const HINT_KEY = "genesis:seenHint4";
+
+function showFirstHint(force = false) {
+  if (force) { try { localStorage.removeItem(HINT_KEY); } catch { /* ไม่เป็นไร */ } }
   const el = document.getElementById("firsthint")!;
-  if (localStorage.getItem("genesis:seenHint3d") === "1") return;
+  // เลขรุ่นอยู่ในคีย์ — พอเนื้อหาหน้านี้เปลี่ยน คนที่เคยกดปิดไปแล้วต้องได้เห็นของใหม่
+  // ของเดิมใช้คีย์เดิมตลอด คนที่เล่นมาก่อนจึงไม่มีวันเห็นคำแนะนำที่เขียนใหม่เลย
+  if (localStorage.getItem(HINT_KEY) === "1") return;
   el.classList.remove("hidden");
   el.innerHTML = `<b>ท่านคือเทพเจ้าของเกาะนี้</b>
     <ol>
+      <li><b>เป้าหมาย: ผู้ศรัทธา ${goalBelievers()} คน</b> — ตอนนี้มีหมู่บ้านเดียวกับคนสิบคน
+        เขาจะโตเองช้าๆ จากผืนดินรอบตัว แต่โตถึง ${goalBelievers()} ไม่ได้ถ้าไม่มีท่าน</li>
+      <li><b>เลื่อนแผนที่: กดค้างบนพื้นแล้วลาก</b> แผ่นดินจะตามมือไป
+        · สองนิ้วบน iPad = หมุนกับซูม · บนแมคกด Shift ค้างหรือใช้ปุ่มขวาเพื่อหมุน</li>
       <li><b>ผู้คนจะบอกเองว่าขาดอะไร</b> — ดูป้ายลอยเหนือหมู่บ้าน กับเสียงของที่ปรึกษาสองฝ่าย
         ที่จะเถียงกันเรื่องเดียวกันตลอดเวลา</li>
       <li><b>ปาฏิหาริย์</b> — เลือกจากแถบล่าง แล้วแตะลงบนเกาะ · คาถาบางคู่ทำงานร่วมกันได้
@@ -547,12 +583,12 @@ function showFirstHint() {
       <li><b>ธรรมกับอธรรมเปลี่ยนหน้าตาของโลก</b> ฟ้า ทะเล ผืนดิน แสง และเพลง
         ไม่เหมือนกันเลยระหว่างเทพเมตตากับเทพพิโรธ</li>
     </ol>
-    <div class="sub">ลากเพื่อหมุนกล้อง · หนีบสองนิ้วหรือใช้ล้อเมาส์เพื่อซูม
-      · เป้าหมายคือผู้ศรัทธา ${goalBelievers()} คน</div>
+    <div class="sub">หนึ่งวันบนเกาะยาว 6 นาทีจริง · กดปุ่ม 1× มุมขวาบนเพื่อเร่งเป็น 2× 4× 8×
+      · หลงทางเมื่อไหร่ เปิดเมนูแล้วกด "กลับไปมองกลางเกาะ"</div>
     <button id="hintOk">เริ่มเลย</button>`;
   document.getElementById("hintOk")!.onclick = () => {
     el.classList.add("hidden");
-    try { localStorage.setItem("genesis:seenHint3d", "1"); } catch { /* ไม่เป็นไร */ }
+    try { localStorage.setItem(HINT_KEY, "1"); } catch { /* ไม่เป็นไร */ }
   };
 }
 

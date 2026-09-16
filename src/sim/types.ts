@@ -161,6 +161,8 @@ export interface GameState {
   faith: number;
   align: number;   // -1 อธรรม .. +1 ธรรม
   tick: number;
+  /** วันที่เท่าไหร่บนเกาะ — หน่วยหลักที่ผู้เล่นใช้อ่านเวลา */
+  day: number;
   year: number;
   dead: boolean;
   /** ถึงเป้าหมายแล้ว — เกมไม่จบทันที แต่ฉากจบถูกปลดให้ดูได้ และเล่นต่อได้ถ้าอยาก */

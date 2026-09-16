@@ -36,7 +36,7 @@ export function createGame(seed: number): Game {
   const rng = mulberry32(seed);
   const state: GameState = {
     tiles: generateWorld(rng), villages: [], creature: null as never, best: null,
-    faith: balance.start.faith, align: 0, tick: 0, year: 0,
+    faith: balance.start.faith, align: 0, tick: 0, day: 0, year: 0,
     dead: false, won: false, carrying: null, carryFrom: null, carryFolk: null, thrown: [],
     fx: [], log: [], shake: 0,
     disasters: [], lastDisasterTick: 0, landCount: 0,
@@ -59,6 +59,8 @@ export function stepTick(g: Game): void {
   const s = g.state;
   if (s.dead) return;
   s.tick++;
+  // วันคือหน่วยที่ผู้เล่นรู้สึกได้ ปีเป็นแค่ป้ายบอกว่าผ่านมานานแล้ว
+  s.day = Math.floor(s.tick / balance.time.ticksPerDay);
   if (s.tick % balance.time.ticksPerYear === 0) s.year++;
   const log = (m: string) => { s.log.push(m); if (s.log.length > 60) s.log.shift(); };
 

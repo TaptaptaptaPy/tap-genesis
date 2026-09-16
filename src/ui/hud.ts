@@ -74,7 +74,8 @@ export class Hud {
     // เดิมเลขนี้บอกแค่ "มีคนกี่คน" ไม่ได้บอกว่ากี่คนถึงจะพอ
     $("sPop").textContent = String(Math.round(totalPop(s)));
     $("sGoal").textContent = s.won ? "· ถึงเป้าแล้ว" : `/ ${goalBelievers()}`;
-    $("sYear").textContent = String(s.year);
+    // ผู้เล่นอ่านเวลาเป็น "วัน" ไม่ใช่ "ปี" — หนึ่งรอบเล่นยาวไม่ถึงปีด้วยซ้ำ
+    $("sYear").textContent = String(s.day);
     ($("alignPin") as HTMLElement).style.left = ((s.align + 1) / 2) * 100 + "%";
 
     for (const d of s.disasters) {
@@ -98,7 +99,15 @@ export class Hud {
     if (bucket !== this.lastAlignBucket) { this.lastAlignBucket = bucket; this.refreshCosts(s); }
     for (const sp of SPELLS) {
       const b = document.getElementById("sp_" + sp.id) as HTMLButtonElement | null;
-      if (b) b.disabled = s.faith < spellCost(sp, s.align);
+      if (!b) continue;
+      const cost = spellCost(sp, s.align);
+      const poor = s.faith < cost;
+      b.disabled = poor;
+      // ปุ่มสีจางที่ไม่บอกเหตุผลคือปุ่มที่ผู้เล่นคิดว่าเกมพัง
+      // ต้องบอกว่าขาดอีกเท่าไหร่ และศรัทธามาจากไหน
+      b.title = poor
+        ? `${sp.hint}\n\nยังขาดศรัทธาอีก ${Math.ceil(cost - s.faith)} — ศรัทธาไหลเข้ามาเองจากผู้คนที่เชื่อในท่าน ยิ่งดูแลเขาดี ยิ่งมาไว`
+        : sp.hint;
     }
 
     this.drawGuide(s);
