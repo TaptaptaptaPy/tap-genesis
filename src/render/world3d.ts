@@ -330,6 +330,34 @@ export class World3D {
     return [r / n, g / n, b / n];
   }
 
+  /** วาดสองเฟรมเทียบกัน — มีของชิ้นนี้อยู่ กับเอาออก — แล้วนับว่าต่างกันกี่พิกเซล
+   *  คืนเป็นสัดส่วนของทั้งเฟรม 0..1
+   *
+   *  เทสต์ภาพตอบได้แค่ "ภาพเหมือนรอบที่แล้วไหม" มันไม่ได้ตอบว่า "ของที่ตั้งใจถ่ายอยู่ในภาพไหม"
+   *  ภาพระยะใกล้ของสัตว์เคยกลายเป็นภาพพุ่มไม้ล้วน เพราะต้นไม้ชุดใหม่ขึ้นมาบังพอดี
+   *  แล้วเทสต์ยังขึ้นเขียวต่ออีกหลายรอบ เพราะภาพที่ได้นิ่งเท่าเดิมทุกครั้ง */
+  coverage(obj: THREE.Object3D): number {
+    const gl = this.renderer.getContext();
+    const w = gl.drawingBufferWidth, h = gl.drawingBufferHeight;
+    const shot = () => {
+      this.renderer.render(this.scene, this.camera);
+      const px = new Uint8Array(w * h * 4);
+      gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, px);
+      return px;
+    };
+    const was = obj.visible;
+    obj.visible = true;  const on = shot();
+    obj.visible = false; const off = shot();
+    obj.visible = was;
+    let diff = 0;
+    for (let i = 0; i < on.length; i += 4) {
+      // เกณฑ์ 12 กันเสียงรบกวนจากการวาดซ้ำ (เงา ลม คลื่น) ไม่ให้ถูกนับเป็นตัวสัตว์
+      if (Math.abs(on[i] - off[i]) + Math.abs(on[i + 1] - off[i + 1])
+        + Math.abs(on[i + 2] - off[i + 2]) > 12) diff++;
+    }
+    return diff / (w * h);
+  }
+
   /** สั่นกล้องตอนฟ้าผ่าหรือแผ่นดินไหว */
   shake = 0;
 

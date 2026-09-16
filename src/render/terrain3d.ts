@@ -294,8 +294,27 @@ export class Terrain3D {
   private buildGrass(s: GameState, clearOf: (t: Tile) => boolean) {
     if (this.grass) { this.group.remove(this.grass); this.grass.dispose(); }
 
-    const blade = new THREE.PlaneGeometry(0.11, 0.15);
-    blade.translate(0, 0.075, 0);
+    // ใบเรียวปลาย ไม่ใช่สี่เหลี่ยมผืนผ้า — ผืนผ้าอ่านออกมาเป็นการ์ดกระดาษปักดิน
+    // เห็นชัดที่สุดตอนซูมเข้าไปใกล้ ซึ่งเป็นระยะที่หญ้ามีไว้เพื่อมันโดยเฉพาะ
+    const w = 0.055, h = 0.17, tip = 0.012;
+    const face = [
+      -w, 0, 0, w, 0, 0, tip, h, 0,
+      -w, 0, 0, tip, h, 0, -tip, h, 0,
+    ];
+    // หน้าหลังเขียนซ้ำแบบกลับลำดับจุด แทนการใช้ `DoubleSide`
+    // เพราะ `DoubleSide` *พลิกเส้นตั้งฉากให้เอง*ตอนวาดด้านหลัง เส้นที่ตั้งใจให้ชี้ขึ้น
+    // จะกลายเป็นชี้ลงดิน แล้วใบที่หันหลังให้กล้องออกมาดำสนิททุกใบ (เห็นชัดมากตอนซูมเข้าใกล้)
+    const back = [
+      face[0], face[1], face[2], face[6], face[7], face[8], face[3], face[4], face[5],
+      face[9], face[10], face[11], face[15], face[16], face[17], face[12], face[13], face[14],
+    ];
+    const blade = new THREE.BufferGeometry();
+    blade.setAttribute("position", new THREE.Float32BufferAttribute([...face, ...back], 3));
+    // เส้นตั้งฉากชี้ขึ้นฟ้าทุกจุด ไม่ใช่ชี้ออกด้านข้างตามหน้าจริงของแผ่น
+    // ใบหญ้าเป็นแผ่น*ตั้ง* เส้นตั้งฉากจริงของมันจึงนอนขนานพื้น แล้วแดดที่ส่องลงมาจากข้างบน
+    // แทบไม่โดนเลย ทั้งกอเลยออกมาเข้มกว่าพื้นที่มันยืนอยู่ — อ่านเป็นเศษขยะสีเข้ม ไม่ใช่หญ้า
+    blade.setAttribute("normal", new THREE.Float32BufferAttribute(
+      new Array(12).fill([0, 1, 0]).flat(), 3));
     const parts: THREE.BufferGeometry[] = [];
     for (const a of [0, Math.PI / 3, (Math.PI * 2) / 3]) {
       const g = blade.clone();
@@ -311,7 +330,7 @@ export class Terrain3D {
     // สีต้องใกล้สีทุ่งมาก ไม่งั้นจากระยะกล้องปกติมันจะอ่านออกมาเป็นเศษดินสีเข้มกระจายเต็มเกาะ
     // หญ้ามีหน้าที่เพิ่มผิวสัมผัสตอนซูมเข้าไปใกล้ ไม่ใช่เพิ่มจุดด่างตอนมองทั้งเกาะ
     const mat = new THREE.MeshLambertMaterial({
-      color: 0x7fa85c, side: THREE.DoubleSide, transparent: true, opacity: 0.8,
+      color: 0x8fb968, side: THREE.FrontSide, transparent: true, opacity: 0.85,
     });
     if (this.sky) applyCloudShadow(mat, this.sky);
     applyWind(mat, this.wind, 0.10);

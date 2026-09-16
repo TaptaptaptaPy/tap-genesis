@@ -19,12 +19,29 @@ import { groundY, standOn } from "./terrain3d";
 /** จำนวนช่องคนสูงสุดที่วาดได้ทั้งเกาะ — `folk.maxPerVillage` × จำนวนหมู่บ้านสูงสุดพอดี */
 const MAX_BODIES = 96;
 
-/** ความสูงของชาวบ้านเทียบกับหน่วยโลก — โมเดลถูกย่อให้สูง 1 หน่วยตอนโหลด
- *  กระท่อมสูงราว 0.9 คนจึงต้องราว 0.45 ถึงจะได้สัดส่วนบ้านต่อคนแบบบ้านจริง */
-const FOLK_SCALE = 0.34;
+/** ความสูงของชาวบ้าน *เป็นหน่วยโลกจริงๆ* — กระท่อมสูง 0.86 ก่อนคูณ `villageGrow`
+ *  อัตราส่วนบ้านต่อคนราว 3:1 คือสิ่งที่ทำให้กลุ่มกระท่อมอ่านออกว่าเป็นหมู่บ้าน
+ *
+ *  ของเดิมเขียนว่า 0.34 โดยคิดว่า `normalise()` ย่อโมเดลให้สูง 1 หน่วยไปแล้ว
+ *  แต่บรรทัดถัดมา `root.scale.setScalar(FOLK_SCALE)` **เขียนทับ** ตัวคูณของ normalise ทิ้ง
+ *  (`cloneSkeleton` ก๊อป scale ติดมาด้วย แล้ว setScalar ก็ทับมันทั้งก้อน)
+ *  ผลคือ 0.34 ไปคูณกับหน่วยดิบของไฟล์ ชาวบ้านจึงสูง 0.87 — **เท่ากับหลังคาบ้านตัวเอง**
+ *  นี่คือที่มาของ "สัดส่วนคนกับเกาะดูแปลกๆ" และเป็นเหตุผลที่สัตว์ดูตัวเล็กไปด้วย
+ *  ทั้งที่ขนาดของสัตว์ไม่เคยผิด (วัดได้ 0.77 ซึ่งพอดีกับที่ตั้งใจ) */
+const FOLK_HEIGHT = 0.30;
 
-/** ผ้าย้อมสีเดียวกันทั้งหมู่บ้านดูตาย — ผูกสีกับหมายเลขช่องเพื่อไม่ให้กระพริบทุกเฟรม */
-const CLOTH = [0x9a5340, 0x4d5f80, 0x8a6f2a, 0x6d4a63, 0xb0674a, 0x56705a];
+/** สีผ้าย้อมธรรมชาติ — ดินแดง คราม ขมิ้น ครั่ง ใบไม้ เปลือกไม้
+ *  ผูกสีกับหมายเลขช่อง ไม่ใช่กับตัวคน เพื่อไม่ให้สีสลับตอนประชากรขึ้นลง
+ *
+ *  ชุดสีนี้เคยถูกใช้กับกรวยสำรองเท่านั้น ซึ่งถูกซ่อนทิ้งทันทีที่โมเดลคนมาถึง
+ *  แปลว่าตลอดเวลาที่ผ่านมาทั้งเกาะใส่เสื้อสีเดียวกันหมดทุกคน แก้สีตรงนี้ก็ไม่มีอะไรเกิดขึ้น
+ *  ตอนนี้มันถูกทาลงบนร่างจริงแล้ว (ดู `dress()`) */
+const CLOTH = [0xc2694a, 0x5c7ba6, 0xd6a63f, 0x9c5570, 0xd9825a, 0x6f9468];
+
+/** ชิ้นส่วนที่นับเป็น "เสื้อผ้า" — ชื่อมาจากไฟล์ของ Kenney ตรงๆ
+ *  หัวไม่อยู่ในนี้ เพราะหัวคือหน้ากับผมซึ่งมาจากเท็กซ์เจอร์ ทับสีแล้วจะเพี้ยนทั้งใบ */
+const SHIRT = ["torso", "arm-left", "arm-right"];
+const TROUSER = ["leg-left", "leg-right"];
 
 export class Villagers3D {
   readonly group = new THREE.Group();
@@ -38,11 +55,28 @@ export class Villagers3D {
    *  หนึ่งคนหนึ่งร่าง เพราะแต่ละคนทำงานคนละอย่างจึงเล่นคนละท่า
    *  InstancedMesh ทำแบบนั้นไม่ได้ มันวาดรูปทรงเดียวกันทุกตัว */
   private rigSrc: Rigged | null = null;
+  /** ตัวคูณที่ทำให้โมเดลสูง `FOLK_HEIGHT` พอดี — คิดครั้งเดียวตอนโหลด */
+  private rigScale = 1;
+  /** ระยะยกให้ฝ่าเท้าอยู่ที่พื้นพอดี — `normalise()` คิดไว้แล้ว แต่เราเขียนทับ `position` ทุกเฟรม */
+  private rigLift = 0;
+  /** วัสดุเสื้อผ้าหกสี × สองชิ้น ใช้ร่วมกันทั้งเกาะ — ดู `dress()` ว่าทำไมห้ามโคลนต่อคน */
+  private cloth = new Map<string, THREE.MeshLambertMaterial>();
   private bodies: { root: THREE.Object3D; rig: Rigged; clip: string; facing: number }[] = [];
   readonly ready: Promise<void>;
 
   /** หันหัวก่อน (Y) แล้วค่อยเอนตัวไปข้างหน้า (X) — ลำดับ XYZ ปกติจะเอนผิดทาง */
   private readonly ORDER = "YXZ" as const;
+
+  /** ร่างที่กำลังวาดอยู่จริง — เทสต์ภาพต้องเล็งกล้องไปที่ตัวจริง ไม่ใช่พิกัดจาก state
+   *  เพราะความสูงของพื้นใต้เท้าอยู่ในชั้นภาพ ไม่ได้อยู่ใน state */
+  get roots(): THREE.Object3D[] {
+    return this.bodies.filter((b) => b.root.visible).map((b) => b.root);
+  }
+
+  /** หยุดท่าทางไว้ที่วินาทีที่กำหนด — มีไว้ให้เทสต์ภาพเท่านั้น
+   *  ท่าของทุกคนเดินต่อทุกเฟรมแม้เวลาของเกมจะหยุด (ลูปวาดภาพไม่ได้หยุดไปด้วย)
+   *  ภาพระยะใกล้จึงไม่มีวันได้ท่าเดิมสองรอบติด แล้วเทสต์จะล้มแบบสุ่มไปตลอด */
+  freezeAt: number | null = null;
 
   constructor() {
     // กระท่อมสูงราว 1.3 หน่วยตอนหมู่บ้านโตเต็มที่ คนจึงต้องสูงราว 0.45
@@ -76,6 +110,10 @@ export class Villagers3D {
     this.ready = loadRigged(models.folk.file).then((r) => {
       normalise(r.scene);
       flattenToLambert(r.scene);
+      // `normalise()` ย่อให้ด้านยาวสุดเป็น 1 หน่วย ซึ่งของคนยืนคือ *ความสูง*
+      // ตัวคูณของมันอยู่ที่ `scene.scale` ต้องคูณต่อ ไม่ใช่ทับทิ้ง
+      this.rigScale = r.scene.scale.x * FOLK_HEIGHT;
+      this.rigLift = r.scene.position.y * FOLK_HEIGHT;
       this.rigSrc = r;
       // ซ่อนทรงเดิม ไม่ลบทิ้ง เผื่อวันไหนอยากเทียบว่าแบบไหนเร็วกว่า
       for (const m of [this.body, this.head, this.load]) m.visible = false;
@@ -121,10 +159,45 @@ export class Villagers3D {
     return c.idle;
   }
 
+  /** ทาสีเสื้อผ้าให้ร่างหนึ่งร่าง
+   *
+   *  `cloneSkeleton()` ใช้วัสดุ*ก้อนเดียวกัน*กับต้นฉบับ แก้สีที่ร่างหนึ่งจึงเปลี่ยนทั้งเกาะ
+   *  ต้องโคลนวัสดุแยกต่อคนก่อนเสมอ
+   *
+   *  และต้องทิ้ง `map` ไปด้วย ไม่ใช่แค่ทับ `color` — เท็กซ์เจอร์ของ Kenney เป็นแผ่นรวม
+   *  ที่เสื้อเป็นสีส้มอยู่แล้ว การคูณสีครามลงบนส้มได้สีโคลน ไม่ได้เสื้อสีคราม
+   *  ตัวคนสูง 0.3 หน่วย ลายบนเสื้อไม่มีใครเห็นอยู่แล้ว สิ่งที่เห็นคือ "คนนี้ไม่ใช่คนเมื่อกี้" */
+  private dress(root: THREE.Object3D, k: number) {
+    const i = k % CLOTH.length;
+    root.traverse((o) => {
+      const m = o as THREE.Mesh;
+      if (!m.isMesh) return;
+      const shirt = SHIRT.includes(m.name);
+      if (!shirt && !TROUSER.includes(m.name)) return;
+      const key = (shirt ? "s" : "t") + i;
+      let lam = this.cloth.get(key);
+      if (!lam) {
+        // **ต้องแชร์วัสดุกันตามหมายเลขสี ห้ามโคลนใหม่ต่อคน**
+        // ลองโคลนต่อคนแล้ววัดได้: 96 คน = วัสดุ 192 ก้อน เวลาต่อเฟรมขึ้นจาก +18% เป็น +90%
+        // เทียบกับแบบกรวยเดิม ซึ่งเกือบชนเพดานที่เทสต์ `perf.spec.ts` ตั้งไว้ (สองเท่า)
+        // สีมีแค่หกชุด วัสดุจึงควรมีแค่สิบสองก้อนทั้งเกาะ
+        const c = new THREE.Color(CLOTH[i]);
+        // กางเกงเป็นสีเดียวกับเสื้อแต่หม่นกว่า — ย้อมคนละครั้งย่อมไม่ได้สีเท่ากัน
+        if (!shirt) c.multiplyScalar(0.62).offsetHSL(0, -0.12, 0);
+        lam = (m.material as THREE.MeshLambertMaterial).clone();
+        lam.map = null;
+        lam.color.copy(c);
+        this.cloth.set(key, lam);
+      }
+      m.material = lam;
+    });
+  }
+
   private placeBody(s: GameState, v: Village, f: Folk, k: number, dt: number) {
     while (this.bodies.length <= k) {
       const root = cloneSkeleton(this.rigSrc!.scene) as THREE.Object3D;
       root.traverse((o) => { const m = o as THREE.Mesh; if (m.isMesh) m.castShadow = true; });
+      this.dress(root, this.bodies.length);
       const mixer = new THREE.AnimationMixer(root);
       const actions: Record<string, THREE.AnimationAction> = {};
       for (const [name, a] of Object.entries(this.rigSrc!.actions))
@@ -151,15 +224,19 @@ export class Villagers3D {
     const moving = f.rest <= 0 && dist > 0.12;
 
     b.root.visible = true;
-    b.root.position.set(f.x, groundY(s, f.x, f.y), f.y);
-    b.root.scale.setScalar(FOLK_SCALE);
+    b.root.position.set(f.x, groundY(s, f.x, f.y) + this.rigLift, f.y);
+    b.root.scale.setScalar(this.rigScale);
     if (moving) b.facing = Math.atan2(dx, dy);
-    // คนยืนตรงกว่าพื้นเสมอ เอียงแค่ครึ่งเดียวของความชันจริง
-    standOn(b.root, s, f.x, f.y, b.facing, 0.5);
+    // คนยืนตรง ไม่ได้เอียงตามพื้น — เอียงตามแค่พอให้รู้ว่ายืนอยู่บนเนิน
+    // เกาะนี้ชันมาก (`HEIGHT_SCALE` 11 บนช่องกว้าง 1) เส้นตั้งฉากของพื้นเอียงได้เกิน 60°
+    // ครึ่งหนึ่งของนั้นคือ 33° ซึ่งวัดได้จริงและอ่านออกมาเป็น "คนกำลังจะล้ม" ทั้งหมู่บ้าน
+    standOn(b.root, s, f.x, f.y, b.facing, 0.22);
 
     const want = this.clipFor(f, moving);
-    if (want !== b.clip) { b.rig.play(want); b.clip = want; }
-    b.rig.update(dt);
+    // ตอนหยุดเวลาต้องสลับท่าแบบไม่ไล่ระดับ ไม่งั้นน้ำหนักท่าจะค้างกลางทางตลอดกาล
+    if (want !== b.clip) { b.rig.play(want, this.freezeAt === null ? 0.2 : 0); b.clip = want; }
+    if (this.freezeAt === null) b.rig.update(dt);
+    else b.rig.mixer.setTime(this.freezeAt);
     void v;
   }
 

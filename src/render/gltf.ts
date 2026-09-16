@@ -108,7 +108,10 @@ export function normalise(scene: THREE.Object3D): number {
  *  แปลงเป็น Lambert เลยดีกว่าไล่ปิด metalness ทีละตัว เพราะทั้งเกาะใช้ Lambert อยู่แล้ว
  *  ถ้าปล่อยให้สัตว์เป็น PBR ตัวเดียว แสงจะไม่เข้ากับอย่างอื่นบนจอ
  */
-export function flattenToLambert(scene: THREE.Object3D): void {
+export function flattenToLambert(
+  scene: THREE.Object3D,
+  tint: Record<string, string> = {},
+): void {
   const seen = new Map<THREE.Material, THREE.MeshLambertMaterial>();
   scene.traverse((o) => {
     const m = o as THREE.Mesh;
@@ -118,14 +121,19 @@ export function flattenToLambert(scene: THREE.Object3D): void {
       let lam = seen.get(old);
       if (!lam) {
         const std = old as THREE.MeshStandardMaterial;
+        // สีที่มากับไฟล์ไม่ได้เข้ากับจานสีของเกาะเสมอไป ทับตามชื่อวัสดุได้
+        // (ทางเดียวกับ `bakedGeometry()` — ตารางสีอยู่ใน `data/models.json` ที่เดียว)
+        const over = tint[std.name ?? ""];
         lam = new THREE.MeshLambertMaterial({
-          color: std.color ? std.color.clone() : new THREE.Color(0xffffff),
-          map: std.map ?? null,
+          color: over ? new THREE.Color(over)
+               : std.color ? std.color.clone() : new THREE.Color(0xffffff),
+          map: over ? null : (std.map ?? null),
           vertexColors: std.vertexColors ?? false,
           side: std.side,
           transparent: std.transparent,
           opacity: std.opacity,
         });
+        lam.name = std.name ?? "";
         seen.set(old, lam);
       }
       return lam;

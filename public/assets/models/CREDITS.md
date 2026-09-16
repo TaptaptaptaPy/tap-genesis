@@ -20,13 +20,13 @@
 หมายเหตุ: ไฟล์เดียวกันบน poly.pizza มี 26 ท่าเพราะชื่อซ้ำสองชุด
 ไฟล์จากต้นทางมี 13 ท่าตามจริง ใช้ของต้นทางดีกว่า
 
-## prop-tree.glb · prop-rock.glb · prop-hut.glb
-- แหล่ง: Kenney · Nature Kit 2.1 · <https://kenney.nl/assets/nature-kit>
-- ไฟล์ต้นทาง: `tree_pineRoundA` · `stone_smallB` · `tent_detailedClosed`
-- ลิขสิทธิ์: **CC0** — ใช้ได้ทุกอย่าง ไม่ต้องให้เครดิต (แต่ให้ก็ดี)
-- สีในไฟล์ออกมาเป็นฟ้าอมเขียวกับส้มอ่อน ไม่เข้ากับจานสีของเกาะ
-  จึงทับสีตามชื่อวัสดุตอนอบลงจุดยอด (`props.tint` ใน `data/models.json`)
-  ไฟล์ต้นฉบับไม่ถูกแก้
+## prop-tree.glb · prop-rock.glb · prop-hut.glb — **เอาออกแล้ว (16 ก.ย. 2026)**
+- แหล่งเดิม: Kenney · Nature Kit 2.1 · <https://kenney.nl/assets/nature-kit> · CC0
+- ต้นไม้ ก้อนหิน และกระท่อมถูกเปลี่ยนไปสร้างจากโค้ดใน `src/render/buildings.ts` แทน
+  เพราะต้องการทรงที่คุมสัดส่วนเองได้และทาสีไล่ตามความสูงในจุดยอด
+- ไฟล์ทั้งสามถูกลบออกจาก `public/assets/models/` แล้ว พร้อมกับ `props` ใน `data/models.json`
+  ทะเบียนที่ชี้ไปยังไฟล์ที่ไม่มีใครเรียกคือที่ที่คนอ่านโค้ดจะเสียเวลาที่สุด
+  (ของเก่ายังอยู่ในประวัติ git ถ้าวันไหนอยากเทียบกัน)
 
 ## folk.glb
 - แหล่ง: Kenney · Blocky Characters 2.0 · <https://kenney.nl/assets/blocky-characters>

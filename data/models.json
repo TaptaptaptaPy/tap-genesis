@@ -6,6 +6,16 @@
     "credit": "Quaternius · Ultimate Animated Animals (Cow) · CC0",
     "_faceOffset": "โมเดลหันหน้าไปทางไหนตอนมุม 0 — บวกเข้ากับ c.facing",
     "faceOffset": 1.5707963,
+    "_tint": "สีในไฟล์เป็นวัวช็อกโกแลตเข้ม ซึ่งบนทุ่งหญ้าสีเขียวอ่านออกมาเป็นเงาดำก้อนเดียว ไม่ใช่สัตว์ — สัตว์ของเราเป็นตัวเอกของเกม มันต้องอ่านออกจากทุกระยะกล้อง ทับสีตามชื่อวัสดุ ไม่ไปแก้ไฟล์ต้นฉบับ",
+    "tint": {
+      "Main": "#c08a4f",
+      "Main_Light": "#ecdcb6",
+      "Muzzle": "#c98f78",
+      "Horns": "#e2d5ad",
+      "Hooves": "#4c3b2c",
+      "Eye_Black": "#241a14",
+      "Eye_White": "#f6f1e4"
+    },
     "clips": {
       "idle": "Idle",
       "tired": "Idle_Headlow",
@@ -17,25 +27,6 @@
       "worship": "Idle_2",
       "wander": "Walk",
       "death": "Death"
-    }
-  },
-  "props": {
-    "_note": "ของประดับฉากที่วาดด้วย InstancedMesh — ไม่มีกระดูก สีฝังอยู่ในจุดยอด",
-    "credit": "Kenney · Nature Kit 2.1 · CC0",
-    "tree": "/assets/models/prop-tree.glb",
-    "rock": "/assets/models/prop-rock.glb",
-    "hut": "/assets/models/prop-hut.glb",
-    "_tint": "สีในไฟล์ของ Kenney ออกมาเป็นฟ้าอมเขียวกับส้มอ่อน ซึ่งไม่เข้ากับเกาะ ทับสีตามชื่อวัสดุตอนอบลงจุดยอด แทนที่จะไปแก้ไฟล์ต้นฉบับ",
-    "tint": {
-      "leafsDark": "#2f5f38",
-      "woodBarkDark": "#54402f",
-      "stone": "#6f6e69",
-      "rock": "#6f6e69",
-      "dirt": "#6b5a46",
-      "grass": "#4a7a46",
-      "colorRed": "#9b6a4a",
-      "colorRedDark": "#7d5238",
-      "wood": "#6e5233"
     }
   },
   "folk": {

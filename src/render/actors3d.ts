@@ -122,10 +122,14 @@ export class Villages3D {
     }
     root.add(huts);
 
+    // วงศรัทธารอบหมู่บ้าน — ต้อง `depthTest` ไว้ ไม่งั้นมันจะถูกวาดทับทุกอย่าง
+    // ตอนมองทั้งเกาะไม่มีใครรู้สึก แต่พอซูมเข้าไปใกล้ มันกลายเป็นห่วงยักษ์เรืองแสง
+    // ที่ลอยทะลุหลังคาบ้านทุกหลัง และกินพื้นที่มากกว่าหมู่บ้านที่มันหมายถึงเสียอีก
+    // แถบก็ต้องบางลงด้วย ของเดิมหนา 0.3 หน่วย ซึ่งกว้างกว่ากระท่อมหนึ่งหลัง
     const ring = new THREE.Mesh(
-      new THREE.RingGeometry(1.15, 1.45, 40),
+      new THREE.RingGeometry(1.3, 1.44, 48),
       new THREE.MeshBasicMaterial({ color: 0xffcf6a, transparent: true, opacity: 0.5,
-                                    side: THREE.DoubleSide, depthWrite: false, depthTest: false }));
+                                    side: THREE.DoubleSide, depthWrite: false }));
     ring.rotation.x = -Math.PI / 2;
     ring.position.y = 0.12;
     root.add(ring);
@@ -268,6 +272,13 @@ export class Creature3D {
   /** ท่าที่กำลังเล่นอยู่ — เปิดออกมาให้เทสต์ตรวจว่าภาพตรงกับสิ่งที่สัตว์กำลังทำจริง */
   get playing() { return this.clip; }
 
+  /** ตัวสัตว์ล้วนๆ ไม่รวมวงแสงใต้เท้ากับไอคอนอารมณ์เหนือหัว
+   *  เทสต์ภาพต้องวัดว่า *ตัวมัน* อยู่ในเฟรมไหม ไม่ใช่ว่าวงแสงโผล่พ้นพุ่มไม้มาไหม */
+  get body(): THREE.Object3D | null { return this.rig?.scene ?? null; }
+
+  /** หยุดท่าทางไว้ที่วินาทีที่กำหนด — เหตุผลเดียวกับของชาวบ้าน ดู `Villagers3D.freezeAt` */
+  freezeAt: number | null = null;
+
   constructor() {
     this.aura = new THREE.Mesh(
       new THREE.RingGeometry(0.62, 0.74, 32),
@@ -287,7 +298,7 @@ export class Creature3D {
 
     this.ready = loadRigged(models.creature.file).then((r) => {
       normalise(r.scene);
-      flattenToLambert(r.scene);
+      flattenToLambert(r.scene, models.creature.tint);
       r.scene.rotation.y = models.creature.faceOffset;
       this.rig = r;
       this.root.add(r.scene);
@@ -316,11 +327,12 @@ export class Creature3D {
 
     if (this.rig) {
       const want = this.wanted(c);
-      if (want !== this.clip) { this.rig.play(want); this.clip = want; }
+      if (want !== this.clip) { this.rig.play(want, this.freezeAt === null ? 0.25 : 0); this.clip = want; }
       // ท่าเดินต้องเร็วขึ้นตามความไวของตัวมันเอง ไม่งั้นตัวที่วิ่งเร็วจะดูเหมือนลอยไปกับพื้น
       const speed = c.tgt ? 0.8 + c.genes.speed * 0.9 : 1;
       this.rig.mixer.timeScale = speed;
-      this.rig.update(dt);
+      if (this.freezeAt === null) this.rig.update(dt);
+      else this.rig.mixer.setTime(this.freezeAt);
     }
 
     (this.aura.material as THREE.MeshBasicMaterial).opacity = c.alive ? 0.18 + c.bond * 0.5 : 0;

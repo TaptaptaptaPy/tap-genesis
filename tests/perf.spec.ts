@@ -7,6 +7,8 @@ import { expect, test } from "@playwright/test";
  *  "ของที่เพิ่งใส่เข้าไปทำให้ช้าลงกี่เท่า" ซึ่งเป็นคำถามที่ตอบได้จริง
  */
 test("เวลาต่อเฟรมตอนโลกเต็มไปด้วยคน", async ({ page }) => {
+  // วัดหกรอบ รอบละ ~45 เฟรม บนเบราว์เซอร์ที่เรนเดอร์ด้วยซอฟต์แวร์ = เกินเวลามาตรฐาน 30 วิแน่นอน
+  test.setTimeout(150_000);
   await page.goto("/?seed=20260915&t=0.3");
   await page.waitForFunction(() => (window as any).__genesis?.creatureReady === true
     && (window as any).__genesis?.propsReady === true);
@@ -37,22 +39,35 @@ test("เวลาต่อเฟรมตอนโลกเต็มไปด�
         const now = performance.now();
         if (frames > 5) total += now - last;    // ข้ามเฟรมแรกๆ ที่ยังอุ่นเครื่อง
         last = now;
-        if (++frames < 70) requestAnimationFrame(tick);
+        if (++frames < 45) requestAnimationFrame(tick);
         else done(total / (frames - 6));
       };
       requestAnimationFrame(tick);
     });
 
     const vg = g.villagers as any;
-    const nu = await measure();                 // แบบใหม่: คนจริงมีท่าทาง หนึ่งคนหนึ่งร่าง
-
-    // สลับกลับไปทางเดิมเพื่อเทียบที่จำนวนคนเท่ากัน
     const keep = vg.rigSrc;
-    vg.rigSrc = null;
-    for (const b of vg.bodies) b.root.visible = false;
-    for (const m of [vg.body, vg.head, vg.load]) m.visible = true;
-    const old = await measure();
-    vg.rigSrc = keep;
+    const useNew = () => {
+      vg.rigSrc = keep;
+      for (const m of [vg.body, vg.head, vg.load]) m.visible = false;
+    };
+    const useOld = () => {
+      vg.rigSrc = null;
+      for (const b of vg.bodies) b.root.visible = false;
+      for (const m of [vg.body, vg.head, vg.load]) m.visible = true;
+    };
+
+    // วัดสลับกันสามรอบแล้วเอาค่าต่ำสุดของแต่ละแบบ
+    // วัดแบบละครั้งเดียวได้ "โหลดของเครื่องตอนนั้น" ไม่ใช่ "ราคาของวิธีวาด" —
+    // เทสต์ชุดนี้รันพร้อมกันสามงานและเรนเดอร์ด้วยซอฟต์แวร์ทั้งหมด
+    // จังหวะที่งานอื่นกำลังโหลดโมเดลอยู่ทำให้อัตราส่วนกระโดดจาก 16% เป็นเกิน 100% ได้
+    // ค่าต่ำสุดคือรอบที่ถูกแย่ง CPU น้อยที่สุด ซึ่งใกล้เคียง "ราคาจริง" ที่สุดเท่าที่วัดได้ที่นี่
+    let nu = Infinity, old = Infinity;
+    for (let round = 0; round < 3; round++) {
+      useNew(); nu = Math.min(nu, await measure());
+      useOld(); old = Math.min(old, await measure());
+    }
+    useNew();
 
     return {
       folk: s.villages.reduce((a: number, v: any) => a + v.folk.length, 0),

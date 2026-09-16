@@ -1,6 +1,7 @@
 import { clamp, pick, type Rng } from "../core/rng";
 import { isWater } from "./biomes";
 import { tileAt } from "./world";
+import { villageFootprint } from "./village";
 import type { Folk, FolkJob, GameState, Village } from "./types";
 import balance from "../../data/balance.json";
 
@@ -62,17 +63,22 @@ function jobFor(v: Village, i: number): FolkJob {
 /** ที่ที่งานนั้นพาไป */
 function targetFor(s: GameState, v: Village, f: Folk, rng: Rng) {
   const cx = v.x + 0.5, cy = v.y + 0.5;
+  // ต้องยืนพ้นกลุ่มกระท่อมเสมอ — กลุ่มกระท่อมโตตามประชากร แต่รัศมีพวกนี้เคยเป็นเลขคงที่
+  // ผลคือพอหมู่บ้านใหญ่ขึ้น คนของมันยืนอยู่ *ในตัวบ้าน* แล้วถูกหลังคาบังหายไปทั้งหมู่บ้าน
+  // (วัดได้ตอนถ่ายภาพระยะใกล้: กระท่อมกินเฟรม 65% ส่วนคนกินเฟรม 0%)
+  const fp = villageFootprint(v);
   if (f.job === "sick" || f.job === "build") {
     const a = rng() * Math.PI * 2;
-    return { x: cx + Math.cos(a) * 0.9, y: cy + Math.sin(a) * 0.9 };
+    return { x: cx + Math.cos(a) * (fp + 0.15), y: cy + Math.sin(a) * (fp + 0.15) };
   }
   if (f.job === "pray") {
     const a = rng() * Math.PI * 2;
-    return { x: cx + Math.cos(a) * 1.3, y: cy + Math.sin(a) * 1.3 };
+    return { x: cx + Math.cos(a) * (fp + 0.35), y: cy + Math.sin(a) * (fp + 0.35) };
   }
   if (f.job === "idle") {
     const a = rng() * Math.PI * 2;
-    return { x: cx + Math.cos(a) * (1.2 + rng()), y: cy + Math.sin(a) * (1.2 + rng()) };
+    const r = fp + 0.25 + rng() * 0.9;
+    return { x: cx + Math.cos(a) * r, y: cy + Math.sin(a) * r };
   }
   // ทำไร่หรือหาไม้ — เดินออกไปช่องที่มีของจริงถ้าหาเจอ
   const want = f.job === "wood" ? "FOREST" : null;

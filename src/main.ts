@@ -653,6 +653,9 @@ if (import.meta.env.DEV)
       get creatureReady() { return creatureLoaded; },
       get propsReady() { return propsLoaded; },
       step: (n = 1) => { for (let i = 0; i < n; i++) stepTick(game); },
+      // หยุดท่าทางของทุกตัวไว้ที่วินาทีเดียวกัน — เทสต์ภาพระยะใกล้ต้องได้ท่าเดิมเป๊ะทุกรอบ
+      // ลูปวาดภาพไม่ได้หยุดตอน `loop.paused` ท่าจึงเดินต่อแม้เวลาของเกมจะหยุดสนิท
+      freeze: (t: number | null = 1.7) => { creature.freezeAt = t; villagers.freezeAt = t; },
       state: () => ({ pointers: pointers.size, dragged, armed }) };
 let creatureLoaded = false;
 let propsLoaded = false;

@@ -134,13 +134,15 @@ export function makeTree(): THREE.BufferGeometry {
   parts.push(paint(trunk, TRUNK, TRUNK_TOP));
 
   // พุ่มสามก้อนเยื้องกัน — ก้อนเดียวอ่านเป็นลูกบอลเสียบไม้
-  const blobs: [number, number, number, number][] = [
-    [0.00, 0.62, 0.00, 0.30],
-    [0.13, 0.78, 0.06, 0.22],
-    [-0.11, 0.74, -0.08, 0.19],
+  // ก้อนใหญ่ละเอียดกว่าก้อนเล็ก — ตอนซูมเข้าใกล้ ก้อนหยาบอ่านเป็นผลึกแก้ว ไม่ใช่ใบไม้
+  // แต่ต้นไม้บนเกาะมีเป็นร้อยต้น จะละเอียดทุกก้อนไม่ได้ ก้อนที่เห็นชัดสุดก้อนเดียวพอ
+  const blobs: [number, number, number, number, number][] = [
+    [0.00, 0.62, 0.00, 0.30, 2],
+    [0.13, 0.78, 0.06, 0.22, 1],
+    [-0.11, 0.74, -0.08, 0.19, 1],
   ];
-  for (const [x, y, z, r] of blobs) {
-    const b = new THREE.IcosahedronGeometry(r, 1);
+  for (const [x, y, z, r, detail] of blobs) {
+    const b = new THREE.IcosahedronGeometry(r, detail);
     b.scale(1, 0.86, 1);
     b.translate(x, y, z);
     parts.push(paint(b, LEAF, LEAF_TOP));
