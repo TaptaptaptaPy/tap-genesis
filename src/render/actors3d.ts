@@ -4,9 +4,10 @@ import { influenceOf } from "../sim/village";
 import balance from "../../data/balance.json";
 import type { Creature, GameState, NeedId, Village } from "../sim/types";
 import { groundY, standOn } from "./terrain3d";
-import { HUT_R, villageFootprint, villageGrow } from "./layout";
+import { villageFootprint, villageGrow } from "./layout";
 export { villageFootprint, villageGrow };
-import { bakedGeometry, flattenToLambert, loadRigged, normalise, type Rigged } from "./gltf";
+import { flattenToLambert, loadRigged, normalise, type Rigged } from "./gltf";
+import { makeGranary, makeHut } from "./buildings";
 import models from "../../data/models.json";
 
 /** ป้ายลอยเหนือหมู่บ้าน บอกว่ากำลังขาดอะไร — ตัวที่ทำให้ผู้เล่นรู้ว่าตอนนี้ควรทำอะไร */
@@ -57,14 +58,16 @@ function glowTexture(): THREE.Texture {
 const GLOW_TEX = /* @__PURE__ */ (() => { let t: THREE.Texture | null = null;
   return () => (t ??= glowTexture()); })();
 
-const HUT_GEO = new THREE.ConeGeometry(HUT_R, 0.8, 6);
-HUT_GEO.translate(0, 0.4, 0);
-const WALL_GEO = new THREE.CylinderGeometry(0.34, 0.38, 0.42, 6);
-WALL_GEO.translate(0, 0.21, 0);
-
-/** รูปทรงกระท่อมจากไฟล์ — มาถึงทีหลัง ระหว่างรอใช้กรวยซ้อนทรงกระบอกแบบเดิม
- *  โหลดครั้งเดียวทั้งเกม ไม่ใช่หลังละครั้ง เพราะทุกหมู่บ้านใช้รูปทรงเดียวกัน */
-let HUT_BAKED: THREE.BufferGeometry | null = null;
+/** กระท่อมสร้างจากโค้ด ไม่ใช่จากไฟล์ — ดู `buildings.ts` ว่าทำไม
+ *  หกทรงไม่เหมือนกันเป๊ะ ใช้วนตามตำแหน่งในหมู่บ้าน หมู่บ้านจึงไม่ดูเป็นของก็อปกัน */
+const HUT_SHAPES = /* @__PURE__ */ (() => {
+  let g: THREE.BufferGeometry[] | null = null;
+  return () => (g ??= [0, 1, 2, 3, 4, 5].map((i) => makeHut(i)));
+})();
+const GRANARY_SHAPE = /* @__PURE__ */ (() => {
+  let g: THREE.BufferGeometry | null = null;
+  return () => (g ??= makeGranary());
+})();
 
 
 
@@ -78,12 +81,8 @@ export class Villages3D {
 
   constructor() {
     this.askTex = { food: askTexture("food"), wood: askTexture("wood"), shelter: askTexture("shelter") };
-    this.ready = bakedGeometry(models.props.hut, models.props.tint).then((g) => {
-      HUT_BAKED = g;
-      // หมู่บ้านที่สร้างไปแล้วยังเป็นกรวยอยู่ ต้องล้างทิ้งให้มันสร้างใหม่รอบหน้า
-      for (const [, e] of this.byId) this.group.remove(e.root);
-      this.byId.clear();
-    });
+    // กระท่อมไม่ต้องรอไฟล์แล้ว สร้างจากโค้ดได้ทันที
+    this.ready = Promise.resolve();
   }
 
   update(s: GameState, time: number, daylight = 1) {
@@ -104,24 +103,16 @@ export class Villages3D {
     standOn(root, s, v.x + 0.5, v.y + 0.5, 0, 0.85);
 
     const huts = new THREE.Group();
-    const roofMat = new THREE.MeshLambertMaterial({ color: 0xa8713f });
-    const wallMat = new THREE.MeshLambertMaterial({ color: 0xd9c9a4 });
-    // รูปทรงจากไฟล์เก็บสีไว้ในจุดยอดแล้ว จึงใช้วัสดุตัวเดียวทั้งหลัง
+    // สีฝังอยู่ในจุดยอดแล้ว จึงใช้วัสดุตัวเดียวทั้งหมู่บ้าน
     const bakedMat = new THREE.MeshLambertMaterial({ vertexColors: true });
+    const shapes = HUT_SHAPES();
     for (let i = 0; i < 6; i++) {
       const hut = new THREE.Group();
-      if (HUT_BAKED) {
-        const body = new THREE.Mesh(HUT_BAKED, bakedMat);
-        body.scale.setScalar(HUT_R * 2.1);
-        body.castShadow = true;
-        hut.add(body);
-      } else {
-      const wall = new THREE.Mesh(WALL_GEO, wallMat);
-      const roof = new THREE.Mesh(HUT_GEO, roofMat);
-      roof.position.y = 0.42;
-      wall.castShadow = roof.castShadow = true;
-      hut.add(wall, roof);
-      }
+      // หลังแรกของทุกหมู่บ้านคือยุ้งฉาง — หมู่บ้านที่มีแต่บ้านเหมือนกันหกหลัง
+      // อ่านเป็น "กองของ" ไม่ใช่ "ชุมชน"
+      const body = new THREE.Mesh(i === 0 ? GRANARY_SHAPE() : shapes[i], bakedMat);
+      body.castShadow = true;
+      hut.add(body);
       const a = (i / 6) * Math.PI * 2 + v.id;
       const rad = i === 0 ? 0 : 0.62 + ((i * 37) % 10) / 18;
       hut.position.set(Math.cos(a) * rad, 0, Math.sin(a) * rad);

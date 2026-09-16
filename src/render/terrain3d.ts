@@ -4,8 +4,7 @@ import { tileAt } from "../sim/world";
 import type { BiomeId, GameState, Tile } from "../sim/types";
 import { HEIGHT_SCALE, SEA, worldY } from "./world3d";
 import balance from "../../data/balance.json";
-import models from "../../data/models.json";
-import { bakedGeometry } from "./gltf";
+import { makeRock, makeTree } from "./buildings";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { villageFootprint } from "./layout";
 import { Water3D } from "./water";
@@ -79,7 +78,6 @@ export class Terrain3D {
   /** รูปทรงของต้นไม้กับก้อนหิน มาถึงทีหลังเพราะโหลดจากไฟล์
    *  ระหว่างรอ ใช้กรวยกับทรงสิบสองหน้าไปก่อน เกาะจะได้ไม่โล่งตอนเปิดเกม */
   private propGeo: { tree?: THREE.BufferGeometry; rock?: THREE.BufferGeometry } = {};
-  private lastState: GameState | null = null;
   /** เวลาของลม เดินตาม dt ของเกม ไม่ใช่นาฬิกาจริง — กด 4× แล้วลมต้องแรงขึ้นด้วย */
   private wind = { value: 0 };
   private grass?: THREE.InstancedMesh;
@@ -119,13 +117,10 @@ export class Terrain3D {
     this.water = new Water3D(s);
     this.group.add(this.water.mesh);
 
-    this.propsReady = Promise.all([
-      bakedGeometry(models.props.tree, models.props.tint).then((g) => { this.propGeo.tree = g; }),
-      bakedGeometry(models.props.rock, models.props.tint).then((g) => { this.propGeo.rock = g; }),
-    ]).then(() => {
-      // รูปทรงมาถึงแล้ว ต้องปลูกใหม่ทั้งเกาะ ไม่งั้นจะยังเป็นกรวยอยู่จนกว่าชีวนิเวศจะเปลี่ยน
-      if (this.lastState) this.buildProps(this.lastState);
-    });
+    // ต้นไม้กับหินสร้างจากโค้ด ไม่ต้องรอไฟล์อีกแล้ว — ดู `buildings.ts` ว่าทำไม
+    this.propGeo.tree = makeTree();
+    this.propGeo.rock = makeRock();
+    this.propsReady = Promise.resolve();
 
     this.refresh(s, true);
   }
@@ -191,7 +186,6 @@ export class Terrain3D {
   }
 
   private refresh(s: GameState, rebuildProps: boolean) {
-    this.lastState = s;
     const vw = W + 1;
     for (let y = 0; y <= H; y++) for (let x = 0; x <= W; x++) {
       const c = this.cornerColor(s, x, y);
