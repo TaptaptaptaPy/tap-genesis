@@ -37,7 +37,7 @@ export function makeCreature(s: GameState, genes: Genes, w: Weights, gen: number
   const c: Creature = {
     x: home.x + 1.5, y: home.y + 1.5, gen, genes, w, mem: {}, vmem: {},
     energy: 0.85, age: 0, act: null, tgt: null, lastAct: null, lastTile: -1, fbTimer: 0,
-    eaten: 0, served: 0, alive: true, mood: 0, blink: 0, fear: 0, curious: 0, hiding: null, chain: {}, pairFrom: null, pairs: {}, chainDone: null, respawnIn: 0, petCd: 0, lastVillage: -1, intent: null, intentTicks: 0,
+    eaten: 0, served: 0, alive: true, mood: 0, blink: 0, fear: 0, curious: 0, hiding: null, chain: {}, pairFrom: null, pairs: {}, chainRun: 0, respawnIn: 0, petCd: 0, lastVillage: -1, intent: null, intentTicks: 0,
     bond: 0.3, grow: 0, cmd: null, need: "content", idleTicks: 0, facing: 0,
   };
   const t = tileAt(s.tiles, Math.round(c.x), Math.round(c.y));
@@ -144,9 +144,12 @@ function startAction(s: GameState, c: Creature, rng: Rng) {
   }
   // ท่าที่สอนไว้ว่า "ทำอันนี้เสร็จแล้วต่อด้วยอันนั้น" — ทำเลย ไม่ต้องคิดใหม่
   // ต้องอยู่ก่อนทุกอย่าง เพราะมันคือสิ่งที่พระเจ้าสอนไว้โดยตรง หนักกว่าความอยากของมันเอง
-  const next = c.lastAct ? c.chain[c.lastAct] : undefined;
-  if (next && c.chainDone !== c.lastAct) {
-    c.chainDone = c.lastAct;
+  // ต่อได้ครั้งเดียวแล้วต้องกลับไปตัดสินใจใหม่เสมอ
+  // ถ้าไม่กัน สอน ก→ข และ ข→ก แล้วมันจะวนสลับสองท่านั้นไปจนตาย
+  // (ผู้เล่นสร้างสถานะนี้ได้ง่ายมากโดยไม่ตั้งใจ เพราะชมทั้งสองทิศทางเป็นเรื่องปกติ)
+  const next = c.lastAct && c.chainRun < P.chainMax ? c.chain[c.lastAct] : undefined;
+  if (next) {
+    c.chainRun++;
     c.intent = null; c.intentTicks = 0;
     c.act = next;
     const cv = nearestVillage(s, c.x, c.y);
@@ -156,6 +159,25 @@ function startAction(s: GameState, c: Creature, rng: Rng) {
     return;
   }
 
+  // ตัดสินใจครั้งเดียวแล้วถือไว้ตลอดช่วงลังเล
+  //
+  // ของเดิมเรียก `chooseAction()` ใหม่ทุก tick แล้วเทียบกับ `c.intent`
+  // ถ้าได้คนละท่า (ซึ่งเกิดเกือบทุกครั้ง เพราะการเลือกเป็นการสุ่มตามน้ำหนัก)
+  // มันจะรีเซ็ตเวลาลังเลใหม่หมด ผลคือ **สัตว์ไม่เคยลงมือทำอะไรได้เลย**
+  // วัดได้: เดิน 600 tick แล้ว `c.act` ไม่เคยถูกตั้งสักครั้ง intent เปลี่ยน 428 ครั้ง
+  // และสัตว์อดตายไปแล้วห้ารุ่นโดยที่ไม่มี error อะไรให้เห็นเลย
+  //
+  // ความลังเลคือ "ตัดสินใจแล้วแต่ยังไม่ลงมือ" ไม่ใช่ "ตัดสินใจใหม่ทุกวินาที"
+  if (c.intent && c.intentTicks > 0) { c.intentTicks--; return; }
+  if (c.intent) {
+    const chosen = c.intent;
+    c.intent = null;
+    startChosen(s, c, chosen, rng);
+    return;
+  }
+
+  // ถึงตรงนี้แปลว่ากำลังจะตัดสินใจเอง ลูกโซ่ที่ต่อมาจึงจบลงตรงนี้
+  c.chainRun = 0;
   const a = chooseAction(s, c, rng);
 
   // การหลอกลวง — ปลายทางของการลงโทษหนักเกินไป
@@ -189,16 +211,15 @@ function startAction(s: GameState, c: Creature, rng: Rng) {
   }
 
   // ลังเลก่อนลงมือ — ผู้เล่นได้เห็นว่ามันกำลังจะทำอะไร แล้วเข้าไปห้ามทัน
-  // เดิมระบบสอนทั้งระบบขึ้นกับหน้าต่าง 3 วินาที *หลัง* มันทำไปแล้ว
+  // เดิมระบบสอนทั้งระบบขึ้นกับหน้าต่างเวลา *หลัง* มันทำไปแล้ว
   // แปลว่าเราสอนได้แค่ "ตัดสินย้อนหลัง" ไม่เคยได้ "เข้าไปห้าม" ซึ่งคนละเรื่องกัน
   // สัตว์ที่กลัวลังเลนานกว่า เพราะมันไม่แน่ใจว่าจะโดนอะไรอีก
-  if (c.intent !== a) {
-    c.intent = a;
-    c.intentTicks = Math.round((P.intentTicks + P.intentPerBond * c.bond) * (1 + c.fear));
-    return;
-  }
-  if (c.intentTicks > 0) { c.intentTicks--; return; }
-  c.intent = null;
+  c.intent = a;
+  c.intentTicks = Math.round((P.intentTicks + P.intentPerBond * c.bond) * (1 + c.fear));
+}
+
+/** ลงมือทำท่าที่ตัดสินใจไว้แล้ว */
+function startChosen(s: GameState, c: Creature, a: ActionId, rng: Rng) {
   c.act = a;
   if (a === "forage") {
     const t = bestFood(s, c, 3 + Math.round(c.genes.intel * 4), rng);

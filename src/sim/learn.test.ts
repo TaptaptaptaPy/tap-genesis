@@ -106,20 +106,43 @@ describe("ท่าหลายขั้น", () => {
     const c = g.state.creature;
     c.chain["help"] = "worship";
     c.lastAct = "help";
-    c.act = null; c.tgt = null; c.chainDone = null;
+    c.act = null; c.tgt = null; c.chainRun = 0;
     c.intent = null; c.intentTicks = 0;
     stepTick(g);
-    expect(c.act).toBe("worship");
+    // ดูที่ `act` หรือ `lastAct` อย่างใดอย่างหนึ่ง เพราะถ้ามันยืนอยู่ที่หมู่บ้านอยู่แล้ว
+    // ท่านั้นจะถูกทำจนจบใน tick เดียวแล้ว `act` ถูกล้างกลับเป็น null ทันที
+    const did: string | null = c.act ?? c.lastAct;
+    expect(did).toBe("worship");
+    expect(c.chainRun).toBe(1);
   });
 
-  it("ต่อได้ครั้งเดียวต่อหนึ่งรอบ ไม่วนเป็นลูปไม่รู้จบ", () => {
+  it("สอน ก→ข และ ข→ก แล้วต้องไม่วนสลับสองท่านั้นไปจนตาย", () => {
     const g = warm(30);
     const c = g.state.creature;
-    c.chain["help"] = "help";
-    c.lastAct = "help"; c.chainDone = "help";
-    c.act = null; c.tgt = null;
+    c.chain["help"] = "worship";
+    c.chain["worship"] = "help";
+    const seen = new Set<string>();
+    for (let i = 0; i < 600; i++) {
+      // ห้ามยัด energy ให้เต็มทุก tick — ความหิวคือสิ่งที่ดึงมันออกจากลูกโซ่
+      // ถ้าทำให้มันไม่หิวเลย เทสต์จะวัดสถานการณ์ที่ไม่มีในเกมจริง
+      // ต้องอ่าน s.creature ใหม่ทุกรอบ เพราะการเกิดใหม่เปลี่ยนตัว object
+      const cur = g.state.creature;
+      cur.chain["help"] = "worship"; cur.chain["worship"] = "help";
+      stepTick(g);
+      if (cur.lastAct) seen.add(cur.lastAct);
+    }
+    // ถ้าวนลูปจริง มันจะไม่มีวันไปหาอาหารหรือเดินเล่นเลย
+    expect(seen.size).toBeGreaterThan(2);
+  });
+
+  it("ต่อได้ครั้งเดียวแล้วต้องกลับไปตัดสินใจใหม่", () => {
+    const g = warm(30);
+    const c = g.state.creature;
+    c.chain["help"] = "worship";
+    c.lastAct = "help";
+    c.act = null; c.tgt = null; c.chainRun = 0;
+    c.intent = null; c.intentTicks = 0;
     stepTick(g);
-    // ต้องไปเข้าทางตัดสินใจปกติ ไม่ใช่ต่อซ้ำทันที
-    expect(c.chainDone).toBe("help");
+    expect(c.chainRun).toBe(1);
   });
 });
