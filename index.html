@@ -13,6 +13,30 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Trirong:wght@400;600&family=Noto+Sans+Thai:wght@400;600&display=swap" rel="stylesheet" />
 <title>ปฐมเทพ</title>
+<script>
+// ตัวดักข้อผิดพลาดตอนเริ่มเกม — เกมที่พังแล้วขึ้นหน้าขาวเปล่าคือสิ่งที่แก้ไม่ได้เลย
+// ทั้งสำหรับผู้เล่นบน iPad และสำหรับคนที่ต้องมาไล่หาสาเหตุทีหลัง
+// ต้องเขียนด้วยของพื้นฐานล้วน เพราะมันต้องทำงานได้แม้ตอนที่ทุกอย่างอื่นพัง
+(function () {
+  var shown = false;
+  function show(what, e) {
+    if (shown) return; shown = true;
+    var d = document.createElement("div");
+    d.setAttribute("style", "position:fixed;inset:0;z-index:99999;padding:24px;overflow:auto;" +
+      "background:#140f12;color:#f0e6d8;font:14px/1.7 ui-monospace,monospace;white-space:pre-wrap");
+    d.textContent = "เกมเริ่มไม่ขึ้น (" + what + ")\n\n" +
+      ((e && (e.stack || e.message)) || String(e)) +
+      "\n\nWebGL: " + (function () {
+        try { var c = document.createElement("canvas");
+              return (c.getContext("webgl2") || c.getContext("webgl")) ? "ใช้ได้" : "ใช้ไม่ได้"; }
+        catch (x) { return "เช็กไม่ได้: " + x; }
+      })();
+    (document.body || document.documentElement).appendChild(d);
+  }
+  addEventListener("error", function (e) { show("error", e.error || e.message); });
+  addEventListener("unhandledrejection", function (e) { show("promise", e.reason); });
+})();
+</script>
 </head>
 <body>
 <div id="app">

@@ -11,6 +11,7 @@ import { Creature3D, Villages3D } from "./render/actors3d";
 import { Villagers3D } from "./render/villagers3d";
 import { Hand3D, Thrown3D } from "./render/hand3d";
 import { unlock as unlockAudio, sfx, setMuted, isMuted } from "./core/audio";
+import { asset } from "./core/asset";
 import { Bgm } from "./core/bgm";
 import { Fx3D } from "./render/fx3d";
 import { Hud } from "./ui/hud";
@@ -421,7 +422,13 @@ const testParams = (() => {
 
 /** เพลงบอกสภาพของรัชสมัย — โลกที่ดูแลดีกับโลกที่กำลังพัง ฟังไม่เหมือนกัน
  *  ผู้เล่นจึงรู้ว่าเรื่องไปทางไหนโดยไม่ต้องอ่านตัวเลขบนแถบบน */
-const bgm = new Bgm("/assets/audio", ["calm", "night", "strain"]);
+const bgm = new Bgm(asset("assets/audio"), ["calm", "night", "strain"]);
+// เพลงถูกมัดเป็น JSON (base64) เผื่อโฮสต์ที่เสิร์ฟเฉพาะชนิดไฟล์เว็บมาตรฐาน
+// ซึ่ง .m4a ไม่อยู่ในนั้น · ถ้าไฟล์ชุดนี้ไม่มี ก็ใช้ไฟล์เสียงตรงๆ เหมือนเดิม
+void fetch(asset("assets/audio.b64.json"))
+  .then((r) => (r.ok ? r.json() : null))
+  .then((m) => { if (m) bgm.useSources(m); })
+  .catch(() => { /* ไม่มีก็ไม่เป็นไร */ });
 
 /** เลือกเพลงจาก state ล้วน ไม่มีการสุ่ม
  *  ลำดับสำคัญ: ความเดือดร้อนมาก่อนเวลากลางคืน เพราะมันเป็นข้อมูลที่เร่งด่วนกว่า */

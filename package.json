@@ -12,7 +12,8 @@
     "check": "tsc --noEmit",
     "visual": "playwright test",
     "visual:update": "playwright test --update-snapshots",
-    "unit": "vitest run"
+    "unit": "vitest run",
+    "pack:models": "node -e \"const fs=require('fs'),p='public/assets/models';const o={};for(const f of fs.readdirSync(p).filter(x=>x.endsWith('.glb')))o[f]=fs.readFileSync(p+'/'+f).toString('base64');fs.writeFileSync('public/assets/models.b64.json',JSON.stringify(o));console.log('มัด',Object.keys(o).length,'โมเดล')\""
   },
   "devDependencies": {
     "@playwright/test": "^1.63.0",

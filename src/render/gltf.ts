@@ -1,6 +1,36 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
+import { asset } from "../core/asset";
+
+/** โมเดลทั้งหมดถูกมัดรวมเป็น JSON ก้อนเดียว (base64) แทนที่จะเป็นไฟล์ .glb แยกกัน
+ *
+ *  เหตุผล: โฮสต์ที่เอาเกมไปวางเสิร์ฟเฉพาะชนิดไฟล์เว็บมาตรฐาน และ `.glb`
+ *  (`model/gltf-binary`) ไม่อยู่ในนั้น ไฟล์โมเดลจึงโหลดไม่ขึ้นเลยสักไฟล์
+ *  มัดเป็น JSON แล้วแปลงกลับเองตอนรัน ได้ผลเหมือนเดิมและใช้ทางเดียวกันทุกที่
+ *
+ *  สร้างไฟล์นี้ใหม่ด้วย `npm run pack:models` ทุกครั้งที่เปลี่ยนโมเดล
+ */
+let packPromise: Promise<Record<string, string>> | null = null;
+const loadPack = () => (packPromise ??=
+  fetch(asset("assets/models.b64.json")).then((r) => r.json()));
+
+/** อ่านไฟล์โมเดลออกมาเป็น ArrayBuffer ไม่ว่าจะเรียกด้วยชื่อไฟล์แบบไหน */
+async function modelBuffer(url: string): Promise<ArrayBuffer> {
+  const name = url.split("/").pop()!;
+  const pack = await loadPack();
+  const b64 = pack[name];
+  if (!b64) throw new Error(`ไม่มีโมเดลชื่อ ${name} ใน models.b64.json — ลืมรัน npm run pack:models?`);
+  const bin = atob(b64);
+  const buf = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
+  return buf.buffer;
+}
+
+/** แปลง ArrayBuffer เป็นฉาก glTF — ทางเดียวกับ loadAsync แต่ไม่ต้องยิง network เอง */
+const parseGLB = (buf: ArrayBuffer) =>
+  new Promise<import("three/examples/jsm/loaders/GLTFLoader.js").GLTF>((res, rej) =>
+    new GLTFLoader().parse(buf, "", res, rej));
 
 /** โหลดโมเดลที่มีโครงกระดูกและท่าทางมาแล้ว
  *
@@ -20,7 +50,7 @@ export interface Rigged {
 }
 
 export async function loadRigged(url: string): Promise<Rigged> {
-  const gltf = await new GLTFLoader().loadAsync(url);
+  const gltf = await parseGLB(await modelBuffer(url));
   const scene = gltf.scene as THREE.Group;
   const mixer = new THREE.AnimationMixer(scene);
   const actions: Record<string, THREE.AnimationAction> = {};
@@ -117,7 +147,7 @@ export async function bakedGeometry(
   url: string,
   tint: Record<string, string> = {},
 ): Promise<THREE.BufferGeometry> {
-  const gltf = await new GLTFLoader().loadAsync(url);
+  const gltf = await parseGLB(await modelBuffer(url));
   const parts: THREE.BufferGeometry[] = [];
   gltf.scene.updateMatrixWorld(true);
   gltf.scene.traverse((o) => {
