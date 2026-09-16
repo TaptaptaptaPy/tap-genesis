@@ -29,8 +29,12 @@ export class World3D {
   private readonly zenithNight = new THREE.Color(0x0c1424);
   private readonly horizonDay = new THREE.Color(0x9cc6dc);
   private readonly horizonNight = new THREE.Color(0x1d2b44);
-  private readonly hemiDay = new THREE.Color(0x9ec4dc);
-  private readonly hemiNight = new THREE.Color(0x46618f);
+  // แสงรอบข้างของ Black & White อุ่นกว่าฟ้าจริงมาก — ฟ้าอมทอง ไม่ใช่ฟ้าอมเทา
+  // ของเดิมเย็นทั้งกลางวันและกลางคืน ทั้งเกาะจึงอ่านเป็นวันเมฆครึ้มตลอดเวลา
+  private readonly hemiDay = new THREE.Color(0xbfd8e0);
+  private readonly groundBounceDay = new THREE.Color(0x6b5a42);
+  private readonly groundBounceNight = new THREE.Color(0x1d2230);
+  private readonly hemiNight = new THREE.Color(0x3d5378);
   private readonly moon = new THREE.Color(0x9fb8e8);
   private readonly cloudNight = new THREE.Color(0x3a4460);
   private readonly sunNoon = new THREE.Color(0xfff2d8);
@@ -67,7 +71,9 @@ export class World3D {
     this.scene.background = null;
     this.addSkyDome();
 
-    this.hemi = new THREE.HemisphereLight(0x9ec4dc, 0x2a3626, 0.75);
+    // สีที่สองคือแสงที่พื้นสะท้อนขึ้นมา ต้องเป็นสีดินอุ่น ไม่ใช่เขียวเข้ม
+    // ไม่งั้นด้านล่างของทุกอย่างจะดำสนิทและรูปทรงจะอ่านไม่ออก
+    this.hemi = new THREE.HemisphereLight(0xbfd8e0, 0x6b5a42, 0.75);
     this.scene.add(this.hemi);
 
     this.sun = new THREE.DirectionalLight(0xfff2d8, 1.45);
@@ -236,6 +242,8 @@ export class World3D {
     // อธรรมทำให้แสงรอบข้างตายลง เงาจึงแข็งขึ้นโดยที่ไม่ต้องแตะเงาเลย
     this.hemi.intensity = (0.34 + 0.28 * d) * (1 - Math.max(0, -this.alignShown) * 0.3);
     this.hemi.color.copy(this.hemiNight).lerp(this.hemiDay, d);
+    // แสงที่พื้นสะท้อนขึ้นมาต้องหรี่ลงตอนกลางคืนด้วย ไม่งั้นพื้นจะเรืองอยู่ทั้งคืน
+    (this.hemi.groundColor as THREE.Color).copy(this.groundBounceNight).lerp(this.groundBounceDay, d);
 
     // สีของกลางวันขึ้นกับรัชสมัย: อธรรมได้ฟ้าสีเลือดจางกับขอบฟ้าสีทราย
     // ธรรมได้ฟ้าใสกว่าและขอบฟ้าที่เกือบเป็นสีขาว
